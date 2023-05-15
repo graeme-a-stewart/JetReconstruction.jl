@@ -15,9 +15,13 @@ export PseudoJet, rap, phi, pt2
 include("HepMC3.jl")
 export HepMC3
 
-# algorithmic part
+# Algorithmic part, simple sequential implementation
 include("Algo.jl")
 export sequential_jet_reconstruct, kt_algo, anti_kt_algo, anti_kt_algo_alt, cambridge_aachen_algo
+
+# Algorithmic part, tiled reconstruction strategy
+include("TiledAlgo.jl")
+export tiled_jet_reconstruct
 
 # jet serialisation (saving to file)
 include("Serialize.jl")
@@ -30,5 +34,9 @@ export jetsplot
 # JSON results
 include("JSONresults.jl")
 export FinalJet, FinalJets, JSON3
+
+# Strategy to be used
+@enum JetRecoStrategy Best N2Basic N2Tiled
+export JetRecoStrategy, Best, N2Basic, N2Tiled
 
 end
