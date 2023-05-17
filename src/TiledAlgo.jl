@@ -15,6 +15,7 @@ end
 
 """Structure of arrays for tiled jet parameters"""
 mutable struct TiledJetSoA{F, I}
+    _size::I              # Active jet count (can be less than the vector length)
 	_kt2::Vector{F}       # p_t^-2
 	_eta::Vector{F}       # Rapidity
 	_phi::Vector{F}       # Phi coordinate
@@ -24,6 +25,7 @@ mutable struct TiledJetSoA{F, I}
 end
 
 TiledJetSoA{F, I}(n::Integer) where {F, I} = TiledJetSoA{F, I}(
+    n,
 	Vector{F}(undef, n),
 	Vector{F}(undef, n),
 	Vector{F}(undef, n),
@@ -192,11 +194,29 @@ function populate_tiles!(tile_jets::Array{TiledJetSoA, 2}, tiling_setup::TilingD
 	for itile in eachindex(tile_jet_count)
 		tile_jet_count[itile] = Int[]
 	end
-	for ijet in 1:flat_jets._size
+	
+    # Find out where each jet lives
+    for ijet in 1:flat_jets._size
 		ieta, iphi = get_tile(tiling_setup, eta(flat_jets, ijet), phi(flat_jets, ijet))
 		push!(tile_jet_count[ieta, iphi], index(flat_jets, ijet))
 	end
-	println(tile_jet_count)
+
+    # Now use the cached indexes to assign and fill the tiles
+    for itile in eachindex(tile_jet_count)
+        ijets = tile_jet_count[itile]
+        this_tile_jets = TiledJetSoA{Float64, Int}(length(ijets))
+        for (itilejet, ijet) in enumerate(ijets)
+            this_tile_jets._kt2[itilejet] = flat_jets._kt2[ijet]
+            this_tile_jets._eta[itilejet] = flat_jets._eta[ijet]
+            this_tile_jets._phi[itilejet] = flat_jets._phi[ijet]
+            this_tile_jets._index[itilejet] = flat_jets._index[ijet]
+            this_tile_jets._nn[itilejet] = flat_jets._nn[ijet]
+            this_tile_jets._nndist[itilejet] = flat_jets._nndist[ijet]
+        end
+        tile_jets[itile] = this_tile_jets
+        println("$(itile) - $(this_tile_jets)")
+    end
+	# println(tile_jet_count)
 end
 
 """
