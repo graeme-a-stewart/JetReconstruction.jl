@@ -15,13 +15,15 @@ end
 
 """Structure of arrays for tiled jet parameters"""
 mutable struct TiledJetSoA{F, I}
-    _size::I              # Active jet count (can be less than the vector length)
-	_kt2::Vector{F}       # p_t^-2
-	_eta::Vector{F}       # Rapidity
-	_phi::Vector{F}       # Phi coordinate
-	_index::Vector{I}     # My jet index
-	_nn::Vector{I}        # Nearest neighbour index (if 0, no nearest neighbour)
-	_nndist::Vector{F}    # Distance to my nearest neighbour
+    _size::I                # Active jet count (can be less than the vector length)
+	_kt2::Vector{F}         # p_t^-2
+	_eta::Vector{F}         # Rapidity
+	_phi::Vector{F}         # Phi coordinate
+	_index::Vector{I}       # My jet index
+	_nn::Vector{I}          # Nearest neighbour index (if 0, no nearest neighbour)
+	_nndist::Vector{F}      # Distance to my nearest neighbour
+    _righttiles::Vector{I}  # Indexes of all tiles to my right
+    _nntiles::Vector{I}     # Indexes of all neighbour tiles
 end
 
 TiledJetSoA{F, I}(n::Integer) where {F, I} = TiledJetSoA{F, I}(
@@ -32,6 +34,8 @@ TiledJetSoA{F, I}(n::Integer) where {F, I} = TiledJetSoA{F, I}(
 	Vector{I}(undef, n),
 	Vector{I}(undef, n),
 	Vector{F}(undef, n),
+    Vector{I}(undef, 0),
+    Vector{I}(undef, 0)
 )
 
 """Structure for the flat jet SoA, as it's convenient"""
@@ -174,10 +178,12 @@ function _setup_tiling(_eta::Vector{T}, Rparam::AbstractFloat) where T <: Abstra
 	# Tiling(tiling_setup)
 end
 
-
+"""Return the tile coordinates of an (eta, phi) pair"""
 get_tile(tiling_setup::TilingDef, eta::AbstractFloat, phi::AbstractFloat) = begin
+    # The eta clamp is necessary as the extreme bins catch overflows for very high abs(eta)
 	ieta = clamp(floor(Int, (eta - tiling_setup._tiles_eta_min) / tiling_setup._tile_size_eta), 1, tiling_setup._n_tiles_eta)
-	iphi = clamp(floor(Int, 1 + (phi / 2π) * tiling_setup._n_tiles_phi), 1, tiling_setup._n_tiles_phi)
+	# The phi clamp should not really be necessary, as long as phi values are [0,2π)
+    iphi = clamp(floor(Int, 1 + (phi / 2π) * tiling_setup._n_tiles_phi), 1, tiling_setup._n_tiles_phi)
 	ieta, iphi
 end
 
@@ -195,7 +201,7 @@ function populate_tiles!(tile_jets::Array{TiledJetSoA, 2}, tiling_setup::TilingD
 		tile_jet_count[itile] = Int[]
 	end
 	
-    # Find out where each jet lives
+    # Find out where each jet lives, then push its index value to the correct tile
     for ijet in 1:flat_jets._size
 		ieta, iphi = get_tile(tiling_setup, eta(flat_jets, ijet), phi(flat_jets, ijet))
 		push!(tile_jet_count[ieta, iphi], index(flat_jets, ijet))
@@ -216,8 +222,40 @@ function populate_tiles!(tile_jets::Array{TiledJetSoA, 2}, tiling_setup::TilingD
         tile_jets[itile] = this_tile_jets
         println("$(itile) - $(this_tile_jets)")
     end
-	# println(tile_jet_count)
+
+    # To help with later iterations, we now find and cache neighbour tile indexes
+    linear_indexes = LinearIndices(tile_jets)
+    for ieta in 1:tiling_setup._n_tiles_eta
+        for iphi in 1:tiling_setup._n_tiles_phi
+            for δeta in -1:1
+                for δphi in -1:1
+                    jeta = ieta + δeta
+                    jphi = iphi + δphi
+                    # No wrap in eta
+                    if (jeta==ieta && jphi==iphi) continue end
+                    if (jeta==0 || jeta==tiling_setup._n_tiles_eta+1) continue end
+                    # Phi tiles wrap around to meet each other
+                    if (jphi==0)
+                        jphi=tiling_setup._n_tiles_phi 
+                    elseif (jphi==tiling_setup._n_tiles_phi+1)
+                        jphi=1
+                    end
+                    # Tile is a neighbour
+                    push!(tile_jets[ieta,iphi]._nntiles, linear_indexes[jeta, jphi])
+                    # Only the tile directly above or to the right are _righttiles
+                    if ((δeta==-1 && δphi==0) || δphi==1)
+                        push!(tile_jets[ieta,iphi]._righttiles, linear_indexes[jeta, jphi])
+                    end
+                end
+            end
+        end
+    end
 end
+
+"""
+Do a complete scan over tiles to final all nearest neighbour distances
+"""
+
 
 """
 Tiled jet reconstruction
@@ -252,6 +290,11 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 
 	# Populate initial tiles
 	populate_tiles!(tile_jets, tiling_setup, flat_jets)
+    println(tile_jets)
+
+    # Setup initial nn, nndist and dij values
+    # find_all_nearest_neighbours!(tile_jets, tiling_setup, flat_jets)
+
 
 	exit(0)
 end
