@@ -1,64 +1,6 @@
 ### Tiled Jet Reconstruction 
 
-"""Tiling definition parameters"""
-struct TilingDef{F, I}
-	_tiles_eta_min::F   # Minimum rapidity
-	_tiles_eta_max::F   # Maximum rapidity
-	_tile_size_eta::F   # Size of a tile in rapidity (usually R^2)
-	_tile_size_phi::F   # Size of a tile in phi (usually a bit more than R^2)
-	_n_tiles_eta::I     # Number of tiles across rapidity
-	_n_tiles_phi::I     # Number of tiles across phi
-	_n_tiles::I         # Total number of tiles
-	_tiles_ieta_min::I  # Min_rapidity / rapidity tile size (needed?)
-	_tiles_ieta_max::I  # Max_rapidity / rapidity tile size (needed?)
-end
-
-"""Structure of arrays for tiled jet parameters"""
-mutable struct TiledJetSoA{F, I}
-    _size::I                # Active jet count (can be less than the vector length)
-	_kt2::Vector{F}         # p_t^-2
-	_eta::Vector{F}         # Rapidity
-	_phi::Vector{F}         # Phi coordinate
-	_index::Vector{I}       # My jet index
-	_nn::Vector{I}          # Nearest neighbour index (if 0, no nearest neighbour)
-	_nndist::Vector{F}      # Distance to my nearest neighbour
-    _dij::Vector{F}         # Jet metric distance to my nearest neighbour
-    _righttiles::Vector{I}  # Indexes of all tiles to my right
-    _nntiles::Vector{I}     # Indexes of all neighbour tiles
-end
-
-TiledJetSoA{F, I}(n::Integer) where {F, I} = TiledJetSoA{F, I}(
-    n,
-	Vector{F}(undef, n),
-	Vector{F}(undef, n),
-	Vector{F}(undef, n),
-	Vector{I}(undef, n),
-	Vector{I}(undef, n),
-	Vector{F}(undef, n),
-    Vector{F}(undef, n),
-    Vector{I}(undef, 0),
-    Vector{I}(undef, 0)
-)
-
-"""Structure for the flat jet SoA, as it's convenient"""
-mutable struct FlatJetSoA{F, I}
-	_size::Int            # Number of active entries (may be less than the vector size!)
-	_kt2::Vector{F}       # p_t^-2
-	_eta::Vector{F}       # Rapidity
-	_phi::Vector{F}       # Phi coordinate
-	_index::Vector{I}     # My jet index
-	_nn::Vector{I}        # Nearest neighbour index (if 0, no nearest neighbour)
-	_nndist::Vector{F}    # Geometric distance to my nearest neighbour
-    _dij::Vector{F}       # Jet metric distance to my nearest neighbour
-end
-
-# Accessors - will work for both SoAs
-kt2(j, n::Int) = j._kt2[n]
-eta(j, n::Int) = j._eta[n]
-phi(j, n::Int) = j._phi[n]
-index(j, n::Int) = j._index[n]
-nn(j, n::Int) = j._nn[n]
-nndist(j, n::Int) = j._nndist[n]
+include("TiledStructs.jl")
 
 """
 Determine an extent for the rapidity tiles, by binning in 
@@ -66,7 +8,7 @@ rapidity and collapsing the outer bins until they have about
 1/4 the number of particles as the maximum bin. This is the 
 heuristic which is used by FastJet.
 """
-function _determine_rapidity_extent(_eta::Vector{T}) where T <: AbstractFloat
+function determine_rapidity_extent(_eta::Vector{T}) where T <: AbstractFloat
 	length(_eta) == 0 && return 0.0, 0.0
 
 	nrap = 20
@@ -145,7 +87,10 @@ function _determine_rapidity_extent(_eta::Vector{T}) where T <: AbstractFloat
 	minrap, maxrap
 end
 
-function _setup_tiling(_eta::Vector{T}, Rparam::AbstractFloat) where T <: AbstractFloat
+"""
+Setup the tiling parameters for this recontstruction
+"""
+function setup_tiling(_eta::Vector{T}, Rparam::AbstractFloat) where T <: AbstractFloat
 	# First decide tile sizes (with a lower bound to avoid huge memory use with
 	# very small R)
 	tile_size_eta = max(0.1, Rparam)
@@ -156,7 +101,7 @@ function _setup_tiling(_eta::Vector{T}, Rparam::AbstractFloat) where T <: Abstra
 	n_tiles_phi   = max(3, floor(Int, 2π / tile_size_eta))
 	tile_size_phi = 2π / n_tiles_phi # >= Rparam and fits in 2pi
 
-	tiles_eta_min, tiles_eta_max = _determine_rapidity_extent(_eta)
+	tiles_eta_min, tiles_eta_max = determine_rapidity_extent(_eta)
 
 	# now adjust the values
 	tiles_ieta_min = floor(Int, tiles_eta_min / tile_size_eta)
@@ -170,7 +115,7 @@ function _setup_tiling(_eta::Vector{T}, Rparam::AbstractFloat) where T <: Abstra
 		n_tiles_eta, n_tiles_phi, n_tiles_eta * n_tiles_phi,
 		tiles_ieta_min, tiles_ieta_max)
 
-	println(tiling_setup)
+	# println(tiling_setup)
 	# exit(0)
 
 	tile_jets = Array{TiledJetSoA, 2}(undef, n_tiles_eta, n_tiles_phi)
@@ -231,7 +176,7 @@ function populate_tiles!(tile_jets::Array{TiledJetSoA, 2}, tiling_setup::TilingD
             this_tile_jets._eta[itilejet] = flat_jets._eta[ijet]
             this_tile_jets._phi[itilejet] = flat_jets._phi[ijet]
             this_tile_jets._index[itilejet] = flat_jets._index[ijet]
-            this_tile_jets._nn[itilejet] = flat_jets._nn[ijet]
+            this_tile_jets._nn[itilejet] = TiledNN{Int}(0, 0)
             this_tile_jets._nndist[itilejet] = flat_jets._nndist[ijet]
         end
         tile_jets[itile] = this_tile_jets
@@ -283,7 +228,8 @@ function find_all_nearest_neighbours!(tile_jets::Array{TiledJetSoA, 2}, tiling_s
     # - each jet in the rightmost neighbour tiles
     # As we compare jet-to-jet, in both directions, the rightmost tiles ensure that the
     # whole space is swept
-    for tile in tile_jets
+    for itile in eachindex(tile_jets)
+        tile = tile_jets[itile]
         if (tile._size==0)
             continue
         end
@@ -294,11 +240,11 @@ function find_all_nearest_neighbours!(tile_jets::Array{TiledJetSoA, 2}, tiling_s
                 tile._eta[jjet], tile._phi[jjet])
                 if (_dist < tile._nndist[ijet])
                     tile._nndist[ijet] = _dist
-                    tile._nn[ijet] = tile._index[jjet]
+                    set_nn!(tile._nn[ijet], itile, jjet)
                 end
                 if (_dist < tile._nndist[jjet])
                     tile._nndist[jjet] = _dist
-                    tile._nn[jjet] = tile._index[ijet]
+                    set_nn!(tile._nn[jjet], itile, ijet)
                 end
             end
             for jtile in tile._righttiles
@@ -308,11 +254,11 @@ function find_all_nearest_neighbours!(tile_jets::Array{TiledJetSoA, 2}, tiling_s
                     tile2._eta[jjet], tile2._phi[jjet])
                     if (_dist < tile._nndist[ijet])
                         tile._nndist[ijet] = _dist
-                        tile._nn[ijet] = tile2._index[jjet]
+                        set_nn!(tile._nn[ijet], jtile, jjet)
                     end
                     if (_dist < tile2._nndist[jjet])
                         tile2._nndist[jjet] = _dist
-                        tile2._nn[jjet] = tile._index[ijet]
+                        set_nn!(tile2._nn[jjet], itile, ijet)
                     end
                 end
             end
@@ -325,10 +271,11 @@ function find_all_nearest_neighbours!(tile_jets::Array{TiledJetSoA, 2}, tiling_s
     min_dij_ijet = 0
     for (itile, tile) in enumerate(tile_jets)
         for ijet in 1:tile._size
-            if tile._nn[ijet] == 0
-                tile._dij[ijet] = tile._nndist[ijet] * tile._kt2[ijet]
+            if valid_nn(tile._nn[ijet])
+                tile._dij[ijet] = tile._nndist[ijet] * 
+                min(tile._kt2[ijet], tile_jets[tile._nn[ijet]._itile]._kt2[tile._nn[ijet]._ijet])
             else
-                tile._dij[ijet] = tile._nndist[ijet] * min(tile._kt2[ijet], flat_jets._kt2[tile._nn[ijet]])
+                tile._dij[ijet] = tile._nndist[ijet] * tile._kt2[ijet]
             end
             # And as this is a complete scan, find the minimum dij as well
             if tile._dij[ijet] < min_dij
@@ -347,6 +294,7 @@ Tiled jet reconstruction
 function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recombine = +) where T
 	# bounds
 	N::Int = length(objects)
+    println("Initial particles: $(N)")
 
 	# returned values
 	jets = T[] # result
@@ -359,27 +307,72 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 
 	# data (make this a struct?)
 	_objects = copy(objects)
+    sizehint!(_objects, N*2)
 	_kt2 = (JetReconstruction.pt.(_objects) .^ 2) .^ _p
+    sizehint!(_kt2, N*2)
 	_phi = JetReconstruction.phi.(_objects)
+    sizehint!(_phi, N*2)
 	_eta = JetReconstruction.eta.(_objects)
+    sizehint!(_eta, N*2)
 	_index = collect(1:N) # Initial jets are just numbered 1:N
+    sizehint!(_index, N*2)
 	_nn = fill(0, N) # Nearest neighbours (0 -> self)
+    sizehint!(_nn, N*2)
 	_nndist = fill(float(_R2), N) # Distances to the nearest neighbour (set to self-distance, initially)
+    sizehint!(_nndist, N*2)
     _dij = fill(0.0, N) # dij
+    sizehint!(_dij, N*2)
+
 	_sequences = Vector{Int}[[x] for x in 1:N]
 
 	flat_jets = FlatJetSoA{typeof(_kt2[1]), typeof(_index[1])}(N, _kt2, _eta, _phi, _index, _nn, _nndist, _dij)
 
 	# Tiling
-	tiling_setup, tile_jets = _setup_tiling(_eta, R)
+	tiling_setup, tile_jets = setup_tiling(_eta, R)
 
-	# Populate initial tiles
+	# Populate tiles, from the initial particles
 	populate_tiles!(tile_jets, tiling_setup, flat_jets)
     # println(tile_jets)
 
     # Setup initial nn, nndist and dij values
     min_dij_itile, min_dij_ijet, min_dij = find_all_nearest_neighbours!(tile_jets, tiling_setup, flat_jets, _R2)
     println("$(min_dij) - $(min_dij_itile) - $(min_dij_ijet) $(tile_jets[min_dij_itile]._index[min_dij_ijet]) -> $(tile_jets[min_dij_itile]._nn[min_dij_ijet])")
+
+    # At each iteration we either merge two jets to one, or finalise a jet
+    # Thus each time we lose one jet, and it therefore takes N iterations to complete
+    # the algorithm
+    for iteration in 1:N
+        # Is this a merger or a final jet?
+        if tile_jets[min_dij_itile]._nn[min_dij_ijet] == 0
+            # Final jet
+            println("Finalise jet $(tile_jets[min_dij_itile]._index[min_dij_ijet])")
+            exit(0)
+        else
+            # Merge jets
+            index_jetA = tile_jets[min_dij_itile]._index[min_dij_ijet]
+            index_jetB = nnindex(tile_jets, min_dij_itile, min_dij_ijet) 
+            println("Merge jets $(index_jetA) $(index_jetB)")
+            merged_jet = recombine(_objects[index_jetA], _objects[index_jetB])
+            println("$(_objects[index_jetA])")
+            println("$(_objects[index_jetB])")
+            push!(_objects, merged_jet)
+            println("$(merged_jet)")
+            push!(flat_jets._index, length(_objects))
+            push!(flat_jets._phi, JetReconstruction.phi(merged_jet))
+            push!(flat_jets._eta, JetReconstruction.eta(merged_jet))
+            push!(flat_jets._kt2, (JetReconstruction.pt(merged_jet)^2)^_p)
+            push!(flat_jets._nndist, _R2)
+            push!(flat_jets._nn, 0)
+            push!(flat_jets._dij, 0.0)
+            merged_jet_index = lastindex(_objects)
+
+            println("Merged jet index $(merged_jet_index) -> $(get_jet(flat_jets, merged_jet_index))")
+
+            exit(0)
+
+        end
+    end
+
 
 	exit(0)
 end
