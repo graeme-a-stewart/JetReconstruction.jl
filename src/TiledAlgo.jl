@@ -294,7 +294,7 @@ function scan_neighbors!(tile_jets::Array{TiledJetSoA, 2}, jet_tile_index::Tiled
     itile = jet_tile_index._itile
 	tile = tile_jets[itile]
 	ijet = jet_tile_index._ijet
-    println("$(tile) $(ijet) $(tile._size)")
+    # println("$(tile) $(ijet) $(tile._size)")
 	for jjet in 1:tile._size
 		if jjet == ijet
 			continue
@@ -341,7 +341,7 @@ Tiled jet reconstruction
 function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recombine = +) where T
 	# bounds
 	N::Int = length(objects)
-	println("Initial particles: $(N)")
+	# println("Initial particles: $(N)")
 
 	# returned values
 	jets = T[] # result
@@ -377,13 +377,13 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 
 	# Setup initial nn, nndist and dij values
 	min_dij_itile, min_dij_ijet, min_dij = find_all_nearest_neighbours!(tile_jets, tiling_setup, flat_jets, _R2)
-	println("$(min_dij) at ($(min_dij_itile), $(min_dij_ijet)) $(tile_jets[min_dij_itile]._index[min_dij_ijet]) -> $(tile_jets[min_dij_itile]._nn[min_dij_ijet])")
+	# println("$(min_dij) at ($(min_dij_itile), $(min_dij_ijet)) $(tile_jets[min_dij_itile]._index[min_dij_ijet]) -> $(tile_jets[min_dij_itile]._nn[min_dij_ijet])")
 
 	# At each iteration we either merge two jets to one, or finalise a jet
 	# Thus each time we lose one jet, and it therefore takes N iterations to complete
 	# the algorithm
 	for iteration in 1:N
-        println("Iteration $(iteration)")
+        # println("Iteration $(iteration)")
 		# Is this a merger or a final jet?
 		if tile_jets[min_dij_itile]._nn[min_dij_ijet]._itile == 0
 			# Final jet
@@ -391,7 +391,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 			index_tile_jetA = TiledNN(min_dij_itile, min_dij_ijet)
 			index_jetA = tile_jets[min_dij_itile]._index[min_dij_ijet]
 			tainted_slots = Set([index_tile_jetA])
-			println("Finalise jet $(tile_jets[min_dij_itile]._index[min_dij_ijet])")
+			# println("Finalise jet $(tile_jets[min_dij_itile]._index[min_dij_ijet])")
             push!(jets, _objects[index_jetA])
 			push!(_sequences[index_jetA], 0)
 			push!(tainted_slots, remove_jet!(tile_jets, index_tile_jetA))
@@ -402,7 +402,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 			index_tile_jetB = tile_jets[min_dij_itile]._nn[min_dij_ijet]
 			index_jetA = tile_jets[min_dij_itile]._index[min_dij_ijet]
 			index_jetB = nnindex(tile_jets, min_dij_itile, min_dij_ijet)
-			println("Merge jets $(index_jetA) ($(index_tile_jetA)) and $(index_jetB) ($(index_tile_jetB))")
+			# println("Merge jets $(index_jetA) ($(index_tile_jetA)) and $(index_jetB) ($(index_tile_jetB))")
 			merged_jet = recombine(_objects[index_jetA], _objects[index_jetB])
 
             # If A and B are in the same tile, ensure that A is the earlier slot
@@ -425,7 +425,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 			# push!(flat_jets._dij, 0.0)
 			merged_jet_index = lastindex(_objects)
 
-			println("Merged jet index $(merged_jet_index) -> $(get_jet(flat_jets, merged_jet_index))")
+			# println("Merged jet index $(merged_jet_index) -> $(get_jet(flat_jets, merged_jet_index))")
 
 			ieta_merged_jet, iphi_merged_jet = get_tile(tiling_setup, flat_jets._eta[merged_jet_index],
 				flat_jets._phi[merged_jet_index])
@@ -439,10 +439,10 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 			# Delete jetA and jetB from their tiles
 			if itile_merged_jet == index_tile_jetA._itile
 				# Put the new jet into jetA's slot
-                println(get_jet(tile_jets, index_tile_jetA))
+                # println(get_jet(tile_jets, index_tile_jetA))
 				insert_jet!(tile_jets[itile_merged_jet], index_tile_jetA._ijet, merged_jet_index, flat_jets, _R2)
 				index_tile_merged_jet = TiledNN(itile_merged_jet, index_tile_jetA._ijet)
-                println(get_jet(tile_jets, index_tile_jetA))
+                # println(get_jet(tile_jets, index_tile_jetA))
 				# Now zap jetB
                 tainted_slots = Set([index_tile_jetA, index_tile_jetB])
 				push!(tainted_slots, remove_jet!(tile_jets, index_tile_jetB))
@@ -466,7 +466,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 			# For our new merged jet, scan for nearest neighbours
 			# Remember, this is pair-wise, so it will update all jets in its tile and neighbours
 			scan_neighbors!(tile_jets, index_tile_merged_jet, _R2)
-            println(get_jet(tile_jets, index_tile_merged_jet))
+            # println(get_jet(tile_jets, index_tile_merged_jet))
 		end
 
         # Now take care of tainted neighbours
@@ -476,22 +476,22 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
             push!(itouched_tiles, index_tile_jetB._itile)
             union!(itouched_tiles, tile_jets[index_tile_jetB._itile]._nntiles)
         end
-        println("$(tainted_slots) - $(itouched_tiles)")
+        # println("$(tainted_slots) - $(itouched_tiles)")
         for tainted_slot in tainted_slots
-            println("Tainted $(tainted_slot) scan")
+            # println("Tainted $(tainted_slot) scan")
             if tainted_slot._itile == 0
                 continue
             end
             for itouched_tile in itouched_tiles
                 tile = tile_jets[itouched_tile]
-                println("Scan tile $(itouched_tile)")
+                # println("Scan tile $(itouched_tile)")
                 for ijet in 1:tile._size
                     if tile._nn[ijet] == tainted_slot
-                        println("Tainted NN for jet $(ijet)")
+                        # println("Tainted NN for jet $(ijet)")
                         tile._nn[ijet] = TiledNN(0, 0)
                         tile._nndist[ijet] = _R2
                         scan_neighbors!(tile_jets, TiledNN(itouched_tile, ijet), _R2)
-                        println("After scan: ", get_jet(tile_jets, TiledNN(itouched_tile, ijet)))
+                        # println("After scan: ", get_jet(tile_jets, TiledNN(itouched_tile, ijet)))
                     end
                 end
             end
@@ -510,22 +510,23 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
                 end
             end
         end
-        if min_dij_itile != 0
-            println("Closest: $(min_dij) at ($(min_dij_itile), $(min_dij_ijet)) $(tile_jets[min_dij_itile]._index[min_dij_ijet]) -> $(tile_jets[min_dij_itile]._nn[min_dij_ijet])")
-        end
+        # if min_dij_itile != 0
+        #     println("Closest: $(min_dij) at ($(min_dij_itile), $(min_dij_ijet)) $(tile_jets[min_dij_itile]._index[min_dij_ijet]) -> $(tile_jets[min_dij_itile]._nn[min_dij_ijet])")
+        # end
 
         # Consistency check...
-        for itile in eachindex(tile_jets)
-            for ijet in 1:tile_jets[itile]._size
-                nn = tile_jets[itile]._nn[ijet]
-                if nn == TiledNN(0, 0)
-                    continue
-                end
-                if tile_jets[nn._itile]._size < nn._ijet
-                    throw(ErrorException("Found bad NN for ($(itile), $(ijet)) -> $(nn)"))
-                end
-            end
-        end
+        # for itile in eachindex(tile_jets)
+        #     for ijet in 1:tile_jets[itile]._size
+        #         nn = tile_jets[itile]._nn[ijet]
+        #         if nn == TiledNN(0, 0)
+        #             continue
+        #         end
+        #         if tile_jets[nn._itile]._size < nn._ijet
+        #             throw(ErrorException("Found bad NN for ($(itile), $(ijet)) -> $(nn)"))
+        #         end
+        #     end
+        # end
 	end
+    # The sequences return value is incorrect at the moment
 	jets, _sequences
 end
