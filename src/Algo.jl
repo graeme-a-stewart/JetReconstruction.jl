@@ -1,3 +1,4 @@
+using Logging
 
 Base.@propagate_inbounds function _dist(i, j, _eta, _phi)
     deta = _eta[i] - _eta[j]
@@ -113,7 +114,9 @@ function sequential_jet_reconstruct(objects::AbstractArray{T}; p=-1.0, R=1., rec
         _nndij[i] = _dij(i, _kt2, _nn, _nndist)
     end
 
+    iteration = 0
     while N != 0
+        iteration += 1
         # findmin
         i = 1
         dij_min = _nndij[1]
@@ -129,6 +132,7 @@ function sequential_jet_reconstruct(objects::AbstractArray{T}; p=-1.0, R=1., rec
             if j < i
                 i, j = j, i
             end
+            @debug "Iteration $(iteration) - Merge jets $(i) and $(j)"
 
             # update ith jet, replacing it with the new one
             _objects[i] = recombine(_objects[i], _objects[j])
@@ -143,6 +147,7 @@ function sequential_jet_reconstruct(objects::AbstractArray{T}; p=-1.0, R=1., rec
                 push!(_sequences[i], x)
             end
         else # i == j
+            @debug "Iteration $(iteration) - Finalise jet $(i) ($(_sequences[i])) $(JetReconstruction.pt(_objects[i]))"
             push!(jets, _objects[i])
             push!(sequences, _sequences[i])
         end
@@ -267,6 +272,8 @@ function sequential_jet_reconstruct_alt(objects::AbstractArray{T}; p=-1, R=1, re
                 i, j = j, i
             end
 
+            @debug "Merge jets $(i) and $(j)"
+
             # update ith jet, replacing it with the new one
             _objects[i] = recombine(_objects[i], _objects[j])
             _phi[i] = JetReconstruction.phi(_objects[i])
@@ -280,6 +287,7 @@ function sequential_jet_reconstruct_alt(objects::AbstractArray{T}; p=-1, R=1, re
                 push!(_sequences[i], x)
             end
         else # i == j
+            @debug "Finalise jet $(i)"
             push!(jets, _objects[i])
             push!(sequences, _sequences[i])
         end

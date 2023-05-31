@@ -11,6 +11,7 @@ using ArgParse
 using Profile
 using Colors
 using StatProfilerHTML
+using Logging
 
 using JetReconstruction
 
@@ -34,7 +35,7 @@ function read_events(fname; maxevents = -1, skipevents = 0)
 		ipart += 1
 	end
 
-	println("Total Events: ", length(events))
+	@info "Total Events: $(length(events))"
 	events
 end
 
@@ -120,7 +121,7 @@ function jet_process(
 	profile::Bool = false,
 	dump::Union{String, Nothing} = nothing,
 )
-	println("Will process $(size(events)) events")
+	@info "Will process $(size(events)[1]) events"
 
 	# First, convert all events into the Vector of Vectors that Atell's
 	# code likes
@@ -142,7 +143,7 @@ function jet_process(
 
 	# Warmup code if we are doing a multi-sample timing run
 	if nsamples > 1 || profile
-		println("Doing initial warm-up run")
+		@debug "Doing initial warm-up run"
 		for event in event_vector
 			anti_kt_algo(event, R = 0.4)
 		end
@@ -160,17 +161,25 @@ function jet_process(
 	cummulative_time = 0.0
 	cummulative_time2 = 0.0
 	for irun ∈ 1:nsamples
-		print("$(irun)/$(nsamples) ")
+		if nsamples > 1
+			@info "$(irun)/$(nsamples) "
+		end
 		t_start = time_ns()
 		for (ievt, event) in enumerate(event_vector)
 			finaljets, _ = jet_reconstruction(event, R = distance, p = power)
 			fj = final_jets(finaljets, ptmin)
-			if !isnothing(dump) && irun == 1
-				println("Event $(ievt)")
-				for (ijet, jet) in enumerate(fj)
-					println(" $(ijet) - $(jet)")
+			# Only print the jet content once
+			if irun == 1
+				@info begin
+					jet_output = "Event $(ievt)\n"
+					for (ijet, jet) in enumerate(fj)
+						jet_output *= " $(ijet) - $(jet)\n"
+					end
+					"$(jet_output)"
 				end
-				push!(jet_collection, FinalJets(ievt, fj))
+				if !isnothing(dump)
+					push!(jet_collection, FinalJets(ievt, fj))
+				end
 			end
 		end
 		t_stop = time_ns()
@@ -248,7 +257,15 @@ parse_command_line(args) = begin
 		action = :store_true
 
 		"--dump"
-		help = "Write list of recontructed jets to a JSON formatted file and also to stdout"
+		help = "Write list of recontructed jets to a JSON formatted file"
+
+		"--info"
+		help = "Print info level log messages"
+		action = :store_true
+
+		"--debug"
+		help = "Print debug level log messages"
+		action = :store_true
 
 		"file"
 		help = "HepMC3 event file in HepMC3 to read."
@@ -272,6 +289,14 @@ end
 
 main() = begin
 	args = parse_command_line(ARGS)
+	if args[:debug]
+		logger = ConsoleLogger(stdout, Logging.Debug)
+	elseif args[:info]
+		logger = ConsoleLogger(stdout, Logging.Info)
+	else
+		logger = ConsoleLogger(stdout, Logging.Warn)
+	end
+	global_logger(logger)
 	events::Vector{Vector{PseudoJet}} =
 		read_events(args[:file], maxevents = args[:maxevents], skipevents = args[:skip])
 	jet_process(events, ptmin = args[:ptmin], distance = args[:distance], 

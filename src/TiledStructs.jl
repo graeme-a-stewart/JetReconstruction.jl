@@ -77,8 +77,11 @@ TiledJetSoA(n::Int) = TiledJetSoA(
     Vector{Int}(undef, 0)
 )
 
-"""Return the NN index of a nearest neighbour tile"""
+"""Return the flat jet index of the nearest neighbour tile of a jet"""
 nnindex(tile_jets::Array{TiledJetSoA, 2}, itile, ijet) = begin
+	if tile_jets[itile]._nn[ijet]._itile == 0
+		return 0
+	end
     return tile_jets[tile_jets[itile]._nn[ijet]._itile]._index[tile_jets[itile]._nn[ijet]._ijet]
 end
 
