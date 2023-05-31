@@ -5,7 +5,7 @@ module JetReconstruction
 
 # particle type definition
 include("Particle.jl")
-export energy, px, py, pz, pt, pt2, phi, mass, eta, kt, ϕ, η
+export energy, px, py, pz, pt, phi, mass, eta, kt, ϕ, η
 
 # Philipp's pseudojet
 include("Pseudojet.jl")

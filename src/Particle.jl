@@ -59,7 +59,7 @@ eta(p) = begin
     _pt2 = pt2(p)
     _abspz = abs(pz(p))
     if (energy(p) == _abspz) && (_pt2 == 0.0)
-        return (-1)^(pz(p) < 0)*(1e5 + abspz) # a very large value that depends on pz
+        return (-1)^(pz(p) < 0)*(1e5 + _abspz) # a very large value that depends on pz
     end
     _m2 = max((energy(p) + pz(p))*(energy(p) - pz(p)) - _pt2, 0.0) # mass^2
     E_plus_z = energy(p) + _abspz
