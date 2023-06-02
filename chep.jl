@@ -119,6 +119,7 @@ function jet_process(
 	nsamples::Integer = 1,
 	gcoff::Bool = false,
 	profile::Bool = false,
+    alloc::Bool = false,
 	dump::Union{String, Nothing} = nothing,
 )
 	@info "Will process $(size(events)[1]) events"
@@ -128,7 +129,7 @@ function jet_process(
 	event_vector = pseudojets2vectors(events)
 
 	# Strategy
-	if (strategy == N2Basic)
+	if (strategy == N2Plain)
 		jet_reconstruction = sequential_jet_reconstruct
 	elseif (strategy == N2Tiled)
 		jet_reconstruction = tiled_jet_reconstruct
@@ -154,16 +155,21 @@ function jet_process(
 
 	if profile
 		profile_code(event_vector, nsamples)
-		return Nothing
+		return nothing
 	end
+
+    if alloc
+        println("Memory allocation statistics:")
+        @timev for event in event_vector
+            finaljets, _ = jet_reconstruction(event, R = distance, p = power)
+        end
+        return nothing
+    end
 
 	# Now setup timers and run the loop
 	cummulative_time = 0.0
 	cummulative_time2 = 0.0
 	for irun ∈ 1:nsamples
-		if nsamples > 1
-			@info "$(irun)/$(nsamples) "
-		end
 		t_start = time_ns()
 		for (ievt, event) in enumerate(event_vector)
 			finaljets, _ = jet_reconstruction(event, R = distance, p = power)
@@ -184,7 +190,9 @@ function jet_process(
 		end
 		t_stop = time_ns()
 		dt_μs = convert(Float64, t_stop - t_start) * 1.e-3
-		println(dt_μs)
+        if nsamples > 1
+			@info "$(irun)/$(nsamples) $(dt_μs)"
+		end
 		cummulative_time += dt_μs
 		cummulative_time2 += dt_μs^2
 	end
@@ -241,7 +249,7 @@ parse_command_line(args) = begin
 		"--strategy"
 		help = "Strategy for the algorithm, valid values: Best, N2Basic, N2Tiled"
 		arg_type = JetRecoStrategy
-		default = N2Basic
+		default = N2Plain
 
 		"--nsamples", "-m"
 		help = "Number of measurement points to acquire."
@@ -255,6 +263,10 @@ parse_command_line(args) = begin
 		"--profile"
 		help = "Profile code and generate a flame graph."
 		action = :store_true
+
+        "--alloc"
+        help = "Provide memory allocation statistics."
+        action = :store_true
 
 		"--dump"
 		help = "Write list of recontructed jets to a JSON formatted file"
@@ -302,7 +314,7 @@ main() = begin
 	jet_process(events, ptmin = args[:ptmin], distance = args[:distance], 
         power = args[:power], strategy = args[:strategy],
 		nsamples = args[:nsamples], gcoff = args[:gcoff], profile = args[:profile],
-		dump = args[:dump])
+		alloc = args[:alloc], dump = args[:dump])
 	nothing
 end
 

@@ -36,7 +36,7 @@ include("JSONresults.jl")
 export FinalJet, FinalJets, JSON3
 
 # Strategy to be used
-@enum JetRecoStrategy Best N2Basic N2Tiled
-export JetRecoStrategy, Best, N2Basic, N2Tiled
+@enum JetRecoStrategy Best N2Plain N2Tiled
+export JetRecoStrategy, Best, N2Plain, N2Tiled
 
 end
