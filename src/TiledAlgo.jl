@@ -423,6 +423,9 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 
 	# Move some variables outside the loop, to avoid per-loop allocations
 	itouched_tiles = Set{Int}()
+	sizehint!(itouched_tiles, 12)
+	tainted_slots = Set{TiledNN}()
+	sizehint!(tainted_slots, 4)
 
 	# At each iteration we either merge two jets to one, or finalise a jet
 	# Thus each time we lose one jet, and it therefore takes N iterations to complete
@@ -454,7 +457,8 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
             jet_merger = false
 			index_tile_jetA = TiledNN(min_dij_itile, min_dij_ijet)
 			index_jetA = tile_jets[min_dij_itile]._index[min_dij_ijet]
-			tainted_slots = Set([index_tile_jetA])
+			empty!(tainted_slots)
+			push!(tainted_slots, index_tile_jetA)
             push!(jets, _objects[index_jetA])
 			push!(_sequences[index_jetA], 0)
 			@debug "Finalise jet $(tile_jets[min_dij_itile]._index[min_dij_ijet]) ($(_sequences[index_jetA])) $(JetReconstruction.pt(_objects[index_jetA]))"
@@ -494,26 +498,26 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 
 
 			# Delete jetA and jetB from their tiles
+			empty!(tainted_slots)
+			push!(tainted_slots, index_tile_jetA)
+			push!(tainted_slots, index_tile_jetB)
 			if itile_merged_jet == index_tile_jetA._itile
 				# Put the new jet into jetA's slot
 				insert_jet!(tile_jets[itile_merged_jet], index_tile_jetA._ijet, merged_jet_index, flat_jets, _R2)
 				index_tile_merged_jet = TiledNN(itile_merged_jet, index_tile_jetA._ijet)
 				# Now zap jetB
-                tainted_slots = Set([index_tile_jetA, index_tile_jetB])
 				push!(tainted_slots, remove_jet!(tile_jets, index_tile_jetB))
 			elseif itile_merged_jet == index_tile_jetB._itile
 				# Use jetB's slot
 				insert_jet!(tile_jets[itile_merged_jet], index_tile_jetB._ijet, merged_jet_index, flat_jets, _R2)
 				index_tile_merged_jet = TiledNN(itile_merged_jet, index_tile_jetB._ijet)
 				# Now zap jetA
-                tainted_slots = Set([index_tile_jetA, index_tile_jetB])
 				push!(tainted_slots, remove_jet!(tile_jets, index_tile_jetA))
 			else
                 # Merged jet is in a different tile
                 add_jet!(tile_jets[itile_merged_jet], merged_jet_index, flat_jets, _R2)
                 index_tile_merged_jet = TiledNN(itile_merged_jet, tile_jets[itile_merged_jet]._size)
                 # Now zap both A and B
-                tainted_slots = Set([index_tile_jetA, index_tile_jetB])
                 push!(tainted_slots, remove_jet!(tile_jets, index_tile_jetA))
                 push!(tainted_slots, remove_jet!(tile_jets, index_tile_jetB))
 			end
@@ -531,21 +535,18 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
             push!(itouched_tiles, index_tile_jetB._itile)
             union!(itouched_tiles, tile_jets[index_tile_jetB._itile]._nntiles)
         end
-        for tainted_slot in tainted_slots
-            if tainted_slot._itile == 0
-                continue
-            end
-            for itouched_tile in itouched_tiles
-                tile = tile_jets[itouched_tile]
-                for ijet in 1:tile._size
-                    if tile._nn[ijet] == tainted_slot
-                        tile._nn[ijet] = TiledNN(0, 0)
-                        tile._nndist[ijet] = _R2
-                        scan_neighbors!(tile_jets, TiledNN(itouched_tile, ijet), _R2)
-                    end
-                end
-            end
-        end
+
+		# Scan over the touched tiles, look for jets whose _nn is tainted
+		for itouched_tile in itouched_tiles
+			tile = tile_jets[itouched_tile]
+			for ijet in 1:tile._size
+				if tile._nn[ijet] in tainted_slots
+					tile._nn[ijet] = TiledNN(0, 0)
+					tile._nndist[ijet] = _R2
+					scan_neighbors!(tile_jets, TiledNN(itouched_tile, ijet), _R2)
+				end
+			end
+		end
 	end
     # The sequences return value is a list of all jets that merged to this one
 	jets, _sequences

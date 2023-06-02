@@ -2,6 +2,7 @@
 # jet reconstruction
 
 import Base.==
+import Base.hash
 
 """Tiling definition parameters"""
 struct TilingDef
@@ -34,8 +35,13 @@ mutable struct TiledNN
     _ijet::Int            # Jet position in this tile
 end
 
+"""Correct hash for the coordinate pair"""
+hash(x::TiledNN) = begin
+    hash(hash(hash(x._itile), hash(x._ijet)))
+end
+
 """Equality operator for tiled coordinates"""
-==(x::TiledNN,y::TiledNN) = (x._itile == y._itile) && (x._ijet == y._ijet)
+==(x::TiledNN,y::TiledNN) = hash(x)==hash(y)
 
 """Setter for nearest neighbour"""
 set_nn!(mynn::TiledNN, itile, ijet) = begin

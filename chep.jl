@@ -73,7 +73,7 @@ function final_jets(jets::Vector{Vector{Float64}}, ptmin::AbstractFloat)
 end
 
 function profile_code(jet_reconstruction, events, niters)
-	Profile.init(n = 10^6, delay = 0.00001)
+	Profile.init(n = 5*10^6, delay = 0.00001)
 	profile_events(events) = begin
 		for evt in events
 			jet_reconstruction(evt, R = 0.4)
