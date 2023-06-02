@@ -36,12 +36,13 @@ mutable struct TiledNN
 end
 
 """Correct hash for the coordinate pair"""
-hash(x::TiledNN) = begin
-    hash(hash(hash(x._itile), hash(x._ijet)))
+hash(x::TiledNN, h::UInt) = begin
+	my_hash = hash(hash(x._itile, UInt(0)), hash(x._ijet, UInt(0)))
+	hash(my_hash, h)
 end
 
 """Equality operator for tiled coordinates"""
-==(x::TiledNN,y::TiledNN) = hash(x)==hash(y)
+==(x::TiledNN,y::TiledNN) = hash(x, UInt(0))==hash(y, UInt(0))
 
 """Setter for nearest neighbour"""
 set_nn!(mynn::TiledNN, itile, ijet) = begin
