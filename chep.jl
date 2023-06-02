@@ -72,11 +72,11 @@ function final_jets(jets::Vector{Vector{Float64}}, ptmin::AbstractFloat)
 	final_jets
 end
 
-function profile_code(events, niters)
+function profile_code(jet_reconstruction, events, niters)
 	Profile.init(n = 10^6, delay = 0.00001)
 	profile_events(events) = begin
 		for evt in events
-			anti_kt_algo(evt, R = 0.4)
+			jet_reconstruction(evt, R = 0.4)
 		end
 	end
 	profile_events(events[1:1])
@@ -146,7 +146,7 @@ function jet_process(
 	if nsamples > 1 || profile
 		@debug "Doing initial warm-up run"
 		for event in event_vector
-			anti_kt_algo(event, R = 0.4)
+			jet_reconstruction(event, R = 0.4)
 		end
 	end
 
@@ -154,7 +154,7 @@ function jet_process(
 	gcoff && GC.enable(false)
 
 	if profile
-		profile_code(event_vector, nsamples)
+		profile_code(jet_reconstruction, event_vector, nsamples)
 		return nothing
 	end
 

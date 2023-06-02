@@ -421,6 +421,9 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	min_dij_itile, min_dij_ijet, min_dij = find_all_nearest_neighbours!(tile_jets, tiling_setup, flat_jets, _R2)
 	# println("$(min_dij) at ($(min_dij_itile), $(min_dij_ijet)) $(tile_jets[min_dij_itile]._index[min_dij_ijet]) -> $(tile_jets[min_dij_itile]._nn[min_dij_ijet])")
 
+	# Move some variables outside the loop, to avoid per-loop allocations
+	itouched_tiles = Set{Int}()
+
 	# At each iteration we either merge two jets to one, or finalise a jet
 	# Thus each time we lose one jet, and it therefore takes N iterations to complete
 	# the algorithm
@@ -521,8 +524,9 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 		end
 
         # Now take care of tainted neighbours
-        itouched_tiles = Set(tile_jets[index_tile_jetA._itile]._nntiles)
+		empty!(itouched_tiles)
         push!(itouched_tiles, index_tile_jetA._itile)
+		union!(itouched_tiles, tile_jets[index_tile_jetA._itile]._nntiles)
         if (jet_merger && index_tile_jetB._itile != index_tile_jetA._itile)
             push!(itouched_tiles, index_tile_jetB._itile)
             union!(itouched_tiles, tile_jets[index_tile_jetB._itile]._nntiles)
