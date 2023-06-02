@@ -189,7 +189,6 @@ For each tile, populate a cache of the nearest tile neighbours
 """
 function populate_tile_cache!(tile_jets::Array{TiledJetSoA, 2}, tiling_setup::TilingDef)
 	# To help with later iterations, we now find and cache neighbour tile indexes
-	# tile_linear_indexes = LinearIndices(tile_jets)
 	for ieta in 1:tiling_setup._n_tiles_eta
 		for iphi in 1:tiling_setup._n_tiles_phi
 			# Clamping ensures we don't go beyond the limits of the eta tiling (which do not wrap)
@@ -434,7 +433,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
         @debug "Iteration $(iteration)"
 
 		# For the first iteration the nearest neighbour is known
-		if iteration != 0
+		if iteration > 1
 			# Now find again the new nearest dij jets
 			min_dij = 1.0e20
 			min_dij_itile = 0
