@@ -156,21 +156,21 @@ function populate_tiles!(tile_jets::Array{TiledJetSoA, 2}, tiling_setup::TilingD
 	# vectors in the tiled jets structure
 	tile_jet_count = Array{Vector{Int}, 2}(undef, tiling_setup._n_tiles_eta, tiling_setup._n_tiles_phi)
 	# Using fill() doesn't work as we fill all tiles with the same vector!
-	for itile in eachindex(tile_jet_count)
+	@inbounds for itile in eachindex(tile_jet_count)
 		tile_jet_count[itile] = Int[]
 	end
 
 	# Find out where each jet lives, then push its index value to the correct tile
-	for ijet in 1:flat_jets._size
+	@inbounds for ijet in 1:flat_jets._size
 		ieta, iphi = get_tile(tiling_setup, eta(flat_jets, ijet), phi(flat_jets, ijet))
 		push!(tile_jet_count[ieta, iphi], index(flat_jets, ijet))
 	end
 
 	# Now use the cached indexes to assign and fill the tiles
-	for itile in eachindex(tile_jet_count)
+	@inbounds for itile in eachindex(tile_jet_count)
 		ijets = tile_jet_count[itile]
 		this_tile_jets = TiledJetSoA(length(ijets))
-		for (itilejet, ijet) in enumerate(ijets)
+		@inbounds for (itilejet, ijet) in enumerate(ijets)
 			this_tile_jets._kt2[itilejet] = flat_jets._kt2[ijet]
 			this_tile_jets._eta[itilejet] = flat_jets._eta[ijet]
 			this_tile_jets._phi[itilejet] = flat_jets._phi[ijet]
@@ -189,12 +189,12 @@ For each tile, populate a cache of the nearest tile neighbours
 """
 function populate_tile_cache!(tile_jets::Array{TiledJetSoA, 2}, tiling_setup::TilingDef)
 	# To help with later iterations, we now find and cache neighbour tile indexes
-	for ieta in 1:tiling_setup._n_tiles_eta
-		for iphi in 1:tiling_setup._n_tiles_phi
+	@inbounds for ieta in 1:tiling_setup._n_tiles_eta
+		@inbounds for iphi in 1:tiling_setup._n_tiles_phi
 			# Clamping ensures we don't go beyond the limits of the eta tiling (which do not wrap)
-			for jeta in clamp(ieta - 1, 1, tiling_setup._n_tiles_eta):clamp(ieta + 1, 1, tiling_setup._n_tiles_eta)
+			@inbounds for jeta in clamp(ieta - 1, 1, tiling_setup._n_tiles_eta):clamp(ieta + 1, 1, tiling_setup._n_tiles_eta)
 				δeta = jeta - ieta
-				for jphi in iphi-1:iphi+1
+				@inbounds for jphi in iphi-1:iphi+1
 					if (jeta == ieta && jphi == iphi)
 						continue
 					end
@@ -228,14 +228,14 @@ function find_all_nearest_neighbours!(tile_jets::Array{TiledJetSoA, 2}, tiling_s
 	# - each jet in the rightmost neighbour tiles
 	# As we compare jet-to-jet, in both directions, the rightmost tiles ensure that the
 	# whole space is swept
-	for itile in eachindex(tile_jets)
+	@inbounds for itile in eachindex(tile_jets)
 		tile = tile_jets[itile]
 		if (tile._size == 0)
 			continue
 		end
-		for ijet in 1:tile._size
+		@inbounds for ijet in 1:tile._size
 			# Could we do this in a broadcast way...? Would it be faster?
-			for jjet in ijet+1:tile._size
+			@inbounds for jjet in ijet+1:tile._size
 				_dist = geometric_distance(tile._eta[ijet], tile._phi[ijet],
 					tile._eta[jjet], tile._phi[jjet])
 				if (_dist < tile._nndist[ijet])
@@ -247,9 +247,9 @@ function find_all_nearest_neighbours!(tile_jets::Array{TiledJetSoA, 2}, tiling_s
 					set_nn!(tile._nn[jjet], itile, ijet)
 				end
 			end
-			for jtile in tile._righttiles
+			@inbounds for jtile in tile._righttiles
 				tile2 = tile_jets[jtile]
-				for jjet in 1:tile2._size
+				@inbounds for jjet in 1:tile2._size
 					_dist = geometric_distance(tile._eta[ijet], tile._phi[ijet],
 						tile2._eta[jjet], tile2._phi[jjet])
 					if (_dist < tile._nndist[ijet])
@@ -269,8 +269,8 @@ function find_all_nearest_neighbours!(tile_jets::Array{TiledJetSoA, 2}, tiling_s
 	min_dij = 1e20
 	min_dij_itile = 0
 	min_dij_ijet = 0
-	for (itile, tile) in enumerate(tile_jets)
-		for ijet in 1:tile._size
+	@inbounds for (itile, tile) in enumerate(tile_jets)
+		@inbounds for ijet in 1:tile._size
 			if valid_nn(tile._nn[ijet])
 				tile._dij[ijet] = tile._nndist[ijet] *
 								  min(tile._kt2[ijet], tile_jets[tile._nn[ijet]._itile]._kt2[tile._nn[ijet]._ijet])
@@ -296,7 +296,7 @@ function scan_neighbors!(tile_jets::Array{TiledJetSoA, 2}, jet_tile_index::Tiled
 	tile = tile_jets[itile]
 	ijet = jet_tile_index._ijet
     # println("$(tile) $(ijet) $(tile._size)")
-	for jjet in 1:tile._size
+	@inbounds for jjet in 1:tile._size
 		if jjet == ijet
 			continue
 		end
@@ -312,9 +312,9 @@ function scan_neighbors!(tile_jets::Array{TiledJetSoA, 2}, jet_tile_index::Tiled
 			tile._dij[jjet] = tile._nndist[jjet] * min(tile._kt2[ijet], tile._kt2[jjet])
 		end
 	end
-	for jtile in tile._nntiles
+	@inbounds for jtile in tile._nntiles
         tile_j = tile_jets[jtile]
-		for jjet in 1:tile_j._size
+		@inbounds for jjet in 1:tile_j._size
 			_dist = geometric_distance(tile._eta[ijet], tile._phi[ijet],
 				tile_j._eta[jjet], tile_j._phi[jjet])
 			if (_dist < tile._nndist[ijet])
@@ -438,8 +438,8 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 			min_dij = 1.0e20
 			min_dij_itile = 0
 			min_dij_ijet = 0
-			for itile in eachindex(tile_jets)
-				for ijet in 1:tile_jets[itile]._size
+			@inbounds for itile in eachindex(tile_jets)
+				@inbounds for ijet in 1:tile_jets[itile]._size
 					if tile_jets[itile]._dij[ijet] < min_dij
 						min_dij_itile = itile
 						min_dij_ijet = ijet
@@ -536,9 +536,9 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
         end
 
 		# Scan over the touched tiles, look for jets whose _nn is tainted
-		for itouched_tile in itouched_tiles
+		@inbounds for itouched_tile in itouched_tiles
 			tile = tile_jets[itouched_tile]
-			for ijet in 1:tile._size
+			@inbounds for ijet in 1:tile._size
 				if tile._nn[ijet] in tainted_slots
 					tile._nn[ijet] = TiledNN(0, 0)
 					tile._nndist[ijet] = _R2
