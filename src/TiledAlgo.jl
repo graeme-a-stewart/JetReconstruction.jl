@@ -206,10 +206,11 @@ function populate_tile_cache!(tile_jets::Array{TiledJetSoA, 2}, tiling_setup::Ti
 						jphi = 1
 					end
 					# Tile is a neighbour
-					push!(tile_jets[ieta, iphi]._nntiles, tiling_setup._tile_linear_indexes[jeta, jphi])
+					tile_index = tiling_setup._tile_linear_indexes[jeta, jphi]
+					push!(tile_jets[ieta, iphi]._nntiles, tile_index)
 					# Only the tile directly above or to the right are _righttiles
 					if (((δeta == -1) && (δphi == 0)) || (δphi == 1))
-						push!(tile_jets[ieta, iphi]._righttiles, tiling_setup._tile_linear_indexes[jeta, jphi])
+						push!(tile_jets[ieta, iphi]._righttiles, tile_index)
 					end
 				end
 			end

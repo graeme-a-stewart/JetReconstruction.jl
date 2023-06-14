@@ -68,21 +68,24 @@ mutable struct TiledJetSoA
     _dij::Vector{Float64}         # Jet metric distance to my nearest neighbour
     _righttiles::Vector{Int} # Indexes of all tiles to my right
     _nntiles::Vector{Int}   # Indexes of all neighbour tiles
+	# Inner constructor to ensure the sizehint for tile caches
+	function TiledJetSoA(n::Int)
+		my_tiledjet = new(n,
+			Vector{Float64}(undef, n),
+			Vector{Float64}(undef, n),
+			Vector{Float64}(undef, n),
+			Vector{Int}(undef, n),
+			Vector{TiledNN}(undef, n),
+			Vector{Float64}(undef, n),
+			Vector{Float64}(undef, n),
+			Vector{Int}(undef, 0),
+			Vector{Int}(undef, 0)
+		)
+		sizehint!(my_tiledjet._righttiles, 4)
+		sizehint!(my_tiledjet._nntiles, 8)
+		my_tiledjet
+	end
 end
-
-"""Constructor for an empty tile holding n jets"""
-TiledJetSoA(n::Int) = TiledJetSoA(
-    n,
-	Vector{Float64}(undef, n),
-	Vector{Float64}(undef, n),
-	Vector{Float64}(undef, n),
-	Vector{Int}(undef, n),
-	Vector{TiledNN}(undef, n),
-	Vector{Float64}(undef, n),
-    Vector{Float64}(undef, n),
-    Vector{Int}(undef, 0),
-    Vector{Int}(undef, 0)
-)
 
 """Return the flat jet index of the nearest neighbour tile of a jet"""
 nnindex(tile_jets::Array{TiledJetSoA, 2}, itile, ijet) = begin
@@ -145,6 +148,7 @@ remove_jet!(tile_jets::Array{TiledJetSoA, 2}, tile_index::TiledNN) = begin
 	# For optimised code, don't do this as we use _size as a bound when scanning
 	deleteat!(tile._kt2, tile._size)
 	deleteat!(tile._eta, tile._size)
+
 	deleteat!(tile._phi, tile._size)
 	deleteat!(tile._index, tile._size)
 	deleteat!(tile._nn, tile._size)
