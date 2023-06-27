@@ -171,15 +171,14 @@ function populate_tiles!(tile_jets::Array{TiledJetSoA, 2}, tiling_setup::TilingD
 		ijets = tile_jet_count[itile]
 		this_tile_jets = TiledJetSoA(length(ijets))
 		@inbounds for (itilejet, ijet) in enumerate(ijets)
-			this_tile_jets._kt2[itilejet] = flat_jets._kt2[ijet]
-			this_tile_jets._eta[itilejet] = flat_jets._eta[ijet]
-			this_tile_jets._phi[itilejet] = flat_jets._phi[ijet]
-			this_tile_jets._index[itilejet] = flat_jets._index[ijet]
-			this_tile_jets._nn[itilejet] = TiledNN(0, 0)
-			this_tile_jets._nndist[itilejet] = R2
+			set_kt2!(this_tile_jets, itilejet, kt2(flat_jets, ijet))
+			set_eta!(this_tile_jets, itilejet, eta(flat_jets, ijet))
+			set_phi!(this_tile_jets, itilejet, phi(flat_jets, ijet))
+			set_index!(this_tile_jets, itilejet, index(flat_jets, ijet))
+			set_nn!(this_tile_jets, itilejet, TiledNN(0,0))
+			set_nndist!(this_tile_jets, itilejet, R2)
 		end
 		tile_jets[itile] = this_tile_jets
-		# println("$(itile) - $(this_tile_jets)")
 	end
 	populate_tile_cache!(tile_jets, tiling_setup)
 end
@@ -385,10 +384,6 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	N::Int = length(objects)
 	@debug "Initial particles: $(N)"
 
-	# returned values
-	jets = T[] # result
-	sequences = Vector{Int}[] # recombination sequences, WARNING: first index in the sequence is not necessarily the seed
-
 	# params
 	_R2::Float64 = R * R
 	_p = (round(p) == p) ? Int(p) : p # integer p if possible
@@ -406,6 +401,8 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	_index = collect(1:N) # Initial jets are just numbered 1:N
 	sizehint!(_index, N * 2)
 
+	# returned values
+	jets = T[] # result
 	_sequences = Vector{Int}[[x] for x in 1:N]
 
 	flat_jets = FlatJetSoA(N, _kt2, _eta, _phi, _index)
@@ -415,11 +412,9 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 
 	# Populate tiles, from the initial particles
 	populate_tiles!(tile_jets, tiling_setup, flat_jets, _R2)
-	# println(tile_jets)
 
 	# Setup initial nn, nndist and dij values
 	min_dij_itile, min_dij_ijet, min_dij = find_all_nearest_neighbours!(tile_jets, tiling_setup, flat_jets, _R2)
-	# println("$(min_dij) at ($(min_dij_itile), $(min_dij_ijet)) $(tile_jets[min_dij_itile]._index[min_dij_ijet]) -> $(tile_jets[min_dij_itile]._nn[min_dij_ijet])")
 
 	# Move some variables outside the loop, to avoid per-loop allocations
 	itouched_tiles = Set{Int}()

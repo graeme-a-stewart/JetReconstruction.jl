@@ -145,7 +145,7 @@ remove_jet!(tile_jets::Array{TiledJetSoA, 2}, tile_index::TiledNN) = begin
 		tainted = TiledNN(0, 0)
 	end
 	# Physically reduce the arrays - safer while developing to avoid accidents!
-	# For optimised code, don't do this as we use _size as a bound when scanning
+	# For optimised code, consider not doing this, as we can use _size as a bound when scanning
 	deleteat!(tile._kt2, tile._size)
 	deleteat!(tile._eta, tile._size)
 
@@ -171,10 +171,18 @@ get_jet(j, n::Int) = begin
     return j._index[n], j._eta[n], j._phi[n], j._kt2[n]
 end
 
-# Accessors - will work for both SoAs
+# Getters - will work for both SoAs
 kt2(j, n::Int) = j._kt2[n]
 eta(j, n::Int) = j._eta[n]
 phi(j, n::Int) = j._phi[n]
 index(j, n::Int) = j._index[n]
 nn(j, n::Int) = j._nn[n]
 nndist(j, n::Int) = j._nndist[n]
+
+# Setters
+set_kt2!(j, n::Int, v) = j._kt2[n] = v
+set_eta!(j, n::Int, v) = j._eta[n] = v
+set_phi!(j, n::Int, v) = j._phi[n] = v
+set_index!(j, n::Int, v) = j._index[n] = v
+set_nn!(j, n::Int, v::TiledNN) = j._nn[n] = v
+set_nndist!(j, n::Int, v) = j._nndist[n] = v
