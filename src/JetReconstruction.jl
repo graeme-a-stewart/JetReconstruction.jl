@@ -27,6 +27,10 @@ export tiled_jet_reconstruct
 include("Serialize.jl")
 export savejets, loadjets!, loadjets
 
+# utility functions, useful for different primary scripts
+include("Utils.jl")
+export read_final_state_particles, pseudojets2vectors, final_jets
+
 # jet visualisation
 include("JetVis.jl")
 export jetsplot

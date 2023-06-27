@@ -30,13 +30,6 @@ module HepMC3
 
 using LorentzVectors
 
-# struct Momentum4{T}
-#     px::T
-#     py::T
-#     pz::T
-#     e::T
-# end
-
 struct Particle{T}
     momentum::LorentzVector{T}
     status::Integer
@@ -97,4 +90,5 @@ function read_events(f, fin; maxevents=-1, skipevents=0)
     #processing the last event:
     ievent > 0 && f(particles)
 end
+
 end
