@@ -3,8 +3,6 @@
 using JetReconstruction
 using Test
 using JSON
-using IsApprox
-using IsApprox: iszero
 
 """Read JSON file with fastjet jets in it"""
 function read_fastjet_outputs(;fname="test/data/jet_collections_fastjet.json")
@@ -73,11 +71,13 @@ function do_jet_test(strategy::JetRecoStrategy, fastjet_jets;
                 # Test each jet in turn
                 for (ijet, jet) in enumerate(event.jets)
                     if ijet <= size(fastjet_jets[ievt]["jets"])[1]
-                        # Approximate test - note that ≈ itself is just too strict here
-                        # There's no a≈b here, so we test the difference is ≈0
-                        @test iszero(jet.rap - fastjet_jets[ievt]["jets"][ijet]["rap"], Approx(atol=1e-7))
-                        @test iszero(jet.phi - fastjet_jets[ievt]["jets"][ijet]["phi"], Approx(atol=1e-7))
-                        @test iszero(jet.pt - fastjet_jets[ievt]["jets"][ijet]["pt"], Approx(atol=1e-7))
+                        # Approximate test - note that @test macro passes the 
+                        # tolerance into the isapprox() function
+                        # Use atol for position as this is absolute, but rtol for
+                        # the momentum
+                        @test jet.rap ≈ fastjet_jets[ievt]["jets"][ijet]["rap"] atol=1e-7
+                        @test jet.phi ≈ fastjet_jets[ievt]["jets"][ijet]["phi"] atol=1e-7
+                        @test jet.pt ≈ fastjet_jets[ievt]["jets"][ijet]["pt"] rtol=1e-6
                     end
                 end
             end
