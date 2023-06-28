@@ -12,6 +12,7 @@ using Profile
 using Colors
 using StatProfilerHTML
 using Logging
+using JSON
 
 using JetReconstruction
 
@@ -156,7 +157,7 @@ function jet_process(
 
 	if !isnothing(dump)
 		open(dump, "w") do io
-			JSON3.pretty(io, jet_collection)
+			JSON.print(io, jet_collection, 2)
 		end
 	end
 end
