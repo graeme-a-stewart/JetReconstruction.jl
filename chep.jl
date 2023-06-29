@@ -77,6 +77,8 @@ function jet_process(
 		jet_reconstruction = sequential_jet_reconstruct
 	elseif (strategy == N2Tiled)
 		jet_reconstruction = tiled_jet_reconstruct
+	elseif (strategy == N2TiledSoA)
+		jet_reconstruction = tiled_jet_reconstruct_soa
 	else
 		throw(ErrorException("Strategy not yet implemented"))
 	end
@@ -238,6 +240,8 @@ function ArgParse.parse_item(::Type{JetRecoStrategy}, x::AbstractString)
 		return JetRecoStrategy(1)
 	elseif (x == "N2Tiled")
 		return JetRecoStrategy(2)
+	elseif (x == "N2TiledSoA")
+		return JetRecoStrategy(3)
 	else
 		throw(ErrorException("Invalid value for strategy: $(x)"))
 	end

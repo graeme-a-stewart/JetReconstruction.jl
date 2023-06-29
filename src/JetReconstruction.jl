@@ -19,7 +19,11 @@ export HepMC3
 include("Algo.jl")
 export sequential_jet_reconstruct, kt_algo, anti_kt_algo, anti_kt_algo_alt, cambridge_aachen_algo
 
-# Algorithmic part, tiled reconstruction strategy
+# Algorithmic part, tiled reconstruction strategy with SoA
+include("TiledAlgoSoA.jl")
+export tiled_jet_reconstruct_soa
+
+# Algorithmic part, tiled reconstruction strategy with SoA
 include("TiledAlgo.jl")
 export tiled_jet_reconstruct
 
@@ -40,7 +44,7 @@ include("JSONresults.jl")
 export FinalJet, FinalJets, JSON3
 
 # Strategy to be used
-@enum JetRecoStrategy Best N2Plain N2Tiled
-export JetRecoStrategy, Best, N2Plain, N2Tiled
+@enum JetRecoStrategy Best N2Plain N2Tiled N2TiledSoA
+export JetRecoStrategy, Best, N2Plain, N2Tiled, N2TiledSoA
 
 end
