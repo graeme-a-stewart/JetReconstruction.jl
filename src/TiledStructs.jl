@@ -18,6 +18,9 @@ struct TilingDef
 
 	# This maps (ieta, iphi) to the linear index of the tile jets
 	_tile_linear_indexes
+
+	# And back again...
+	_tile_cartesian_indexes
 	
 	# Use an inner constructor as _n_tiles and _tile_linear_indexes 
 	# are defined by the other values
@@ -25,7 +28,7 @@ struct TilingDef
 		_n_tiles_eta, _n_tiles_phi, _tiles_ieta_min, _tiles_ieta_max)
 		new(_tiles_eta_min, _tiles_eta_max, _tile_size_eta, _tile_size_phi,
 		_n_tiles_eta, _n_tiles_phi, _n_tiles_eta*_n_tiles_phi, _tiles_ieta_min, _tiles_ieta_max,
-		LinearIndices((1:_n_tiles_eta, 1:_n_tiles_phi)))
+		LinearIndices((1:_n_tiles_eta, 1:_n_tiles_phi)), CartesianIndices((1:_n_tiles_eta, 1:_n_tiles_phi)))
 	end
 end
 
@@ -55,9 +58,11 @@ valid_nn(mynn::TiledSoACoord) = begin
     return mynn._itile > 0
 end
 
+abstract type JetSoA end
+
 """Structure of arrays for tiled jet parameters, using an SoA layout
 for computational efficiency"""
-mutable struct TiledJetSoA
+mutable struct TiledJetSoA <: JetSoA
     _size::Int              # Active jet count (can be less than the vector length)
 	_kt2::Vector{Float64}         # p_t^-2p
 	_eta::Vector{Float64}         # Rapidity
@@ -96,7 +101,7 @@ nnindex(tile_jets::Array{TiledJetSoA, 2}, itile, ijet) = begin
 end
 
 """Structure for the flat jet SoA, as it's convenient"""
-mutable struct FlatJetSoA
+mutable struct FlatJetSoA <: JetSoA
 	_size::Int            # Number of active entries (may be less than the vector size!)
 	_kt2::Vector{Float64}       # p_t^-2
 	_eta::Vector{Float64}       # Rapidity
@@ -172,17 +177,17 @@ get_jet(j, n::Int) = begin
 end
 
 # Getters - will work for both SoAs
-kt2(j, n::Int) = j._kt2[n]
-eta(j, n::Int) = j._eta[n]
-phi(j, n::Int) = j._phi[n]
-index(j, n::Int) = j._index[n]
-nn(j, n::Int) = j._nn[n]
-nndist(j, n::Int) = j._nndist[n]
+kt2(j::JetSoA, n::Int) = j._kt2[n]
+eta(j::JetSoA, n::Int) = j._eta[n]
+phi(j::JetSoA, n::Int) = j._phi[n]
+index(j::JetSoA, n::Int) = j._index[n]
+nn(j::JetSoA, n::Int) = j._nn[n]
+nndist(j::JetSoA, n::Int) = j._nndist[n]
 
 # Setters
-set_kt2!(j, n::Int, v) = j._kt2[n] = v
-set_eta!(j, n::Int, v) = j._eta[n] = v
-set_phi!(j, n::Int, v) = j._phi[n] = v
-set_index!(j, n::Int, v) = j._index[n] = v
-set_nn!(j, n::Int, v::TiledSoACoord) = j._nn[n] = v
-set_nndist!(j, n::Int, v) = j._nndist[n] = v
+set_kt2!(j::JetSoA, n::Int, v) = j._kt2[n] = v
+set_eta!(j::JetSoA, n::Int, v) = j._eta[n] = v
+set_phi!(j::JetSoA, n::Int, v) = j._phi[n] = v
+set_index!(j::JetSoA, n::Int, v) = j._index[n] = v
+set_nn!(j::JetSoA, n::Int, v::TiledSoACoord) = j._nn[n] = v
+set_nndist!(j::JetSoA, n::Int, v) = j._nndist[n] = v

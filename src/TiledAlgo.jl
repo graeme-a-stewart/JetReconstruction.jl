@@ -137,7 +137,72 @@ function debug_tiles(tiles::Array{Tile, 2}, flatjets::FlatJets)
     msg
 end
 
-function find_all_tiled_nearest_neighbours!(tiles::Array{Tile, 2}, flatjets::FlatJets, R2)
+"""
+Complete scan over all tiles to setup the nearest neighbour mappings at the beginning
+"""
+function find_all_tiled_nearest_neighbours!(tiles::Array{Tile, 2}, flatjets::FlatJets, tiling_setup::TilingDef, R2)
+    # Iterate tile by tile...
+    for itile in eachindex(tiles)
+        itile_cartesian = tiling_setup._tile_cartesian_indexes[itile]
+        ijet = first_jet(tiles[itile])
+        # println("$itile $itile_cartesian - $ijet")
+        if ijet == 0
+            continue
+        end
+        jjet = next_jet(flatjets, ijet)
+        # print(" $jjet")
+        # Scan over all the other jets in my tile
+        while jjet != 0
+            # As this is symetric, we do not need to care about jets earlier in the list
+            nn_dist = geometric_distance(eta(flatjets, ijet), phi(flatjets, ijet),
+                                                eta(flatjets, jjet), phi(flatjets, jjet))
+            if nn_dist < nn_distance(flatjets, ijet)
+                set_nn_distance!(flatjets, ijet, nn_dist)
+                set_nearest_neighbour!(flatjets, ijet, jjet)
+            end
+            if nn_dist < nn_distance(flatjets, jjet)
+                set_nn_distance!(flatjets, jjet, nn_dist)
+                set_nearest_neighbour!(flatjets, jjet, ijet)
+            end
+            # Move to next jet in the list to compare against ("RHS")
+            jjet = next_jet(flatjets, jjet)
+        end
+        # println()
+
+        # Now scan over rightmost neighbour tiles
+        # This means moving in (η,ϕ) indexes, so now we need to map back from the 1D index
+        # to the 2D one...
+        for jtile_cartesian in rightmost_tiles(tiling_setup._n_tiles_eta, tiling_setup._n_tiles_phi, itile_cartesian[1], itile_cartesian[2])
+            jtile = tiling_setup._tile_linear_indexes[jtile_cartesian[1], jtile_cartesian[2]]
+            jjet = first_jet(tiles[jtile])
+            while jjet != 0
+                nn_dist = geometric_distance(eta(flatjets, ijet), phi(flatjets, ijet),
+                    eta(flatjets, jjet), phi(flatjets, jjet))
+                if nn_dist < nn_distance(flatjets, ijet)
+                    set_nn_distance!(flatjets, ijet, nn_dist)
+                    set_nearest_neighbour!(flatjets, ijet, jjet)
+                end
+                if nn_dist < nn_distance(flatjets, jjet)
+                    set_nn_distance!(flatjets, jjet, nn_dist)
+                    set_nearest_neighbour!(flatjets, jjet, ijet)
+                end
+                # Move to next jet in the list to compare against ("RHS")
+                jjet = next_jet(flatjets, jjet)
+            end
+        end
+    end
+    # Done with nearest neighbours, now calculate dij_distances
+    for ijet in 1:size(flatjets.kt2)[1]
+        set_dij_distance!(flatjets, ijet, 
+            get_dij_dist(
+                nn_distance(flatjets, ijet), 
+                kt2(flatjets, ijet), 
+                nearest_neighbour(flatjets, ijet) == 0 ? 0.0 : kt2(flatjets, nearest_neighbour(flatjets, ijet)), 
+                R2
+            )
+        )
+                
+    end
 end
 
 """
@@ -155,41 +220,33 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 
 	# Input data
 	# jet_objects = copy(objects) # Don't need to copy this, we don't touch it
-	# sizehint!(objects, N * 2)
-	kt2 = (JetReconstruction.pt.(objects) .^ 2) .^ p
-	sizehint!(kt2, N * 2)
-	phi = JetReconstruction.phi.(objects)
-	sizehint!(phi, N * 2)
-	eta = JetReconstruction.eta.(objects)
-	sizehint!(eta, N * 2)
+	_kt2 = (JetReconstruction.pt.(objects) .^ 2) .^ p
+	_phi = JetReconstruction.phi.(objects)
+	_eta = JetReconstruction.eta.(objects)
 	# index = collect(1:N) # Initial jets are just numbered 1:N
-	# sizehint!(index, N * 2)
 
 	# Each jet stores which tile it is in, so need the usual container for that # Needed?
 	# tile_index = zeros(Int, N)
 	# sizehint!(tile_index, N * 2)
 
 	# Linked list: this is the index of the next/previous jet for this tile (0 = the end/beginning)
-	next_jet = zeros(Int, N)
-	sizehint!(next_jet, N * 2)
-    prev_jet = zeros(Int, N)
-	sizehint!(prev_jet, N * 2)
+	_next_jet = zeros(Int, N)
+    _prev_jet = zeros(Int, N)
 
     # Nearest neighbour parameters
-    nearest_neighbour = zeros(Int, N)
-    nn_distance = fill(1.0e9, N)
-    dij_distance = fill(1.0e9, N)
-
+    _nearest_neighbour = zeros(Int, N)
+    _nn_distance = fill(1.0e9, N)
+    _dij_distance = fill(1.0e9, N)
 
 	# returned values
 	jets = T[] # result
 	sequences = Vector{Int}[[x] for x in 1:N]
 
-	flatjets = FlatJets(kt2, eta, phi, next_jet, prev_jet,
-                        nearest_neighbour, nn_distance, dij_distance)
+	flatjets = FlatJets(_kt2, _eta, _phi, _next_jet, _prev_jet,
+                        _nearest_neighbour, _nn_distance, _dij_distance)
 
 	# Tiling
-	tiling_setup= setup_tiling(eta, R)
+	tiling_setup= setup_tiling(_eta, R)
 	@debug("Tiles: $(tiling_setup._n_tiles_eta)x$(tiling_setup._n_tiles_phi)")
 
 	# Setup the tiling array
@@ -202,16 +259,10 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	populate_tile_lists!(tiles, flatjets, tiling_setup)
 
     # Useful state debugging
-    print(debug_tiles(tiles, flatjets))
+    # print(debug_tiles(tiles, flatjets))
 
 	# Setup initial nn, nndist and dij values
-	# min_dij_itile, min_dij_ijet, min_dij = find_all_tiled_nearest_neighbours!(tiles, flatjets, tiling_setup, R2)
-
-	# # Move some variables outside the loop, to avoid per-loop allocations
-	# itouched_tiles = Set{Int}()
-	# sizehint!(itouched_tiles, 12)
-	# tainted_slots = Set{TiledSoACoord}()
-	# sizehint!(tainted_slots, 4)
+	find_all_tiled_nearest_neighbours!(tiles, flatjets, tiling_setup, R2)
 
 	# At each iteration we either merge two jets to one, or finalise a jet
 	# Thus each time we lose one jet, and it therefore takes N iterations to complete
@@ -219,7 +270,18 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	for iteration in 1:N
         @debug "Iteration $(iteration)"
 
+        # Find the lowest value of dij_distance
+        iclosejetA = argmin(flatjets.dij_distance)
+        iclosejetB = nearest_neighbour(flatjets, iclosejetA)
+        @debug "Closest jets $iclosejetA, $iclosejetB: $(kt2(flatjets, iclosejetA))"
+        break
 
+        # Finalise jet or merge jets?
+        if iclosejetB != 0
+            # Merge jets A and B
+        else
+            # Finalise jet A
+        end
     end
 
 	# 	# For the first iteration the nearest neighbour is known

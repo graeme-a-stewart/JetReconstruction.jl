@@ -125,6 +125,15 @@ geometric_distance(eta1::AbstractFloat, phi1::AbstractFloat, eta2::AbstractFloat
 	return δeta * δeta + δphi * δphi
 end
 
+"""
+Return the dij metric distance between a pair of pseudojets
+"""
+get_dij_dist(nn_dist, kt2_1, kt2_2, R2) = begin
+	if kt2_2 == 0.0
+		return kt2_1 * R2
+	end
+	return nn_dist * min(kt2_1, kt2_2)
+end
 
 """
 Return the tile coordinates of an (eta, phi) pair
@@ -135,6 +144,40 @@ get_tile(tiling_setup::TilingDef, eta::AbstractFloat, phi::AbstractFloat) = begi
 	# The phi clamp should not really be necessary, as long as phi values are [0,2π)
 	iphi = clamp(floor(Int, 1 + (phi / 2π) * tiling_setup._n_tiles_phi), 1, tiling_setup._n_tiles_phi)
 	ieta, iphi
+end
+
+"""
+Iterator for the indexes of rightmost tiles for a given Cartesian tile index
+	- These are the tiles above and to the right of the given tile (X=yes, O=no)
+		XXX
+		O.X
+		OOO
+	- η coordinate must be in range, ϕ coordinate wraps
+
+"""
+struct rightmost_tiles
+    n_η::Int		# Number of η tiles
+    n_ϕ::Int		# Number of ϕ tiles
+    start_η::Int	# Centre η tile coordinate
+    start_ϕ::Int	# Centre ϕ tile coordinate
+end
+
+function Base.iterate(t::rightmost_tiles, state=1)
+    mapping = ((-1,-1), (-1,0), (-1,1), (0,1))
+    if t.start_η == 1 && state == 1
+        state = 4
+    end
+    while state <= 4
+        η = t.start_η + mapping[state][1]
+        ϕ = t.start_ϕ + mapping[state][2]
+        if ϕ > t.n_ϕ
+            ϕ = 1
+        elseif ϕ < 1
+            ϕ = t.n_ϕ
+        end
+        return (η,ϕ), state+1
+    end
+    return nothing
 end
 
 """
