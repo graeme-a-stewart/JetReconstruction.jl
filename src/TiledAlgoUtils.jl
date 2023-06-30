@@ -147,6 +147,22 @@ get_tile(tiling_setup::TilingDef, eta::AbstractFloat, phi::AbstractFloat) = begi
 end
 
 """
+Map an (η, ϕ) pair into a linear index, which is much faster "by hand" than using
+the LinearIndices construct (like x100, which is bonkers, but there you go...)
+"""
+get_tile_linear_index(tiling_setup::TilingDef, i_η::Int, i_ϕ::Int) = begin
+	return tiling_setup._n_tiles_eta * (i_ϕ-1) + i_η
+end
+
+"""
+Map a linear index to a tuple of (η, ϕ) - again this is very much faster than
+using CartesianIndices
+"""
+get_tile_cartesian_indices(tiling_setup::TilingDef, index::Int) = begin
+	return (rem(index-1, tiling_setup._n_tiles_eta)+1, div(index-1, tiling_setup._n_tiles_eta)+1)
+end
+
+"""
 Iterator for the indexes of rightmost tiles for a given Cartesian tile index
 	- These are the tiles above and to the right of the given tile (X=yes, O=no)
 		XXX

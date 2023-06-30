@@ -11,8 +11,11 @@ mutable struct FlatJets
 	eta::Vector{Float64}        # Rapidity
 	phi::Vector{Float64}        # Phi coordinate
 
+    # Mapping to original jets in (px, py, pz, E)
+    jet_index::Vector{Int}
+
     # Tiles and linked list 
-	# tile_index::Vector{Int}    # My tile index
+	tile_index::Vector{Int}    # My tile index
 	next_jet::Vector{Int}      # This is the linked list index of the next jet for this tile (0→end)
     prev_jet::Vector{Int}      # This is the linked list index of the previous jet for this tile (0→first)
 
@@ -26,7 +29,8 @@ end
 kt2(jets::FlatJets, n::Int) = jets.kt2[n]
 eta(jets::FlatJets, n::Int) = jets.eta[n]
 phi(jets::FlatJets, n::Int) = jets.phi[n]
-# tile_index(jets::FlatJets, n::Int) = jets.tile_index[n]
+jet_index(jets::FlatJets, n::Int) = jets.tile_index[n]
+tile_index(jets::FlatJets, n::Int) = jets.tile_index[n]
 next_jet(jets::FlatJets, n::Int) = jets.next_jet[n]
 prev_jet(jets::FlatJets, n::Int) = jets.prev_jet[n]
 nearest_neighbour(jets::FlatJets, n::Int) = jets.nearest_neighbour[n]
@@ -34,7 +38,7 @@ nn_distance(jets::FlatJets, n::Int) = jets.nn_distance[n]
 dij_distance(jets::FlatJets, n::Int) = jets.dij_distance[n]
 
 # Setters
-# set_tile_index!(jets::FlatJets, n::Int, i) = jets.tile_index[n] = i
+set_tile_index!(jets::FlatJets, n::Int, i) = jets.tile_index[n] = i
 set_next_jet!(jets::FlatJets, n::Int, next::Int) = jets.next_jet[n] = next
 set_prev_jet!(jets::FlatJets, n::Int, prev::Int) = jets.prev_jet[n] = prev 
 
@@ -92,8 +96,7 @@ Populate the tiles with their first jets and construct the linked lists in the f
 function populate_tile_lists!(tiles::Array{Tile, 2}, flatjets::FlatJets, tiling_setup::TilingDef)
     for ijet in 1:size(flatjets.eta)[1]
         tile_η, tile_ϕ = get_tile(tiling_setup, eta(flatjets, ijet), phi(flatjets, ijet))
-        # This is quite expensive, like ~12us, do we really need it?
-        # set_tile_index!(flatjets, ijet, tiling_setup._tile_linear_indexes[tile_η, tile_ϕ])
+        set_tile_index!(flatjets, ijet, get_tile_linear_index(tiling_setup, tile_η, tile_ϕ))
         if tiles[tile_η, tile_ϕ].first_jet == 0
             # First jet in this tile
             tiles[tile_η, tile_ϕ].first_jet = ijet
@@ -143,7 +146,9 @@ Complete scan over all tiles to setup the nearest neighbour mappings at the begi
 function find_all_tiled_nearest_neighbours!(tiles::Array{Tile, 2}, flatjets::FlatJets, tiling_setup::TilingDef, R2)
     # Iterate tile by tile...
     for itile in eachindex(tiles)
-        itile_cartesian = tiling_setup._tile_cartesian_indexes[itile]
+        itile_cartesian = get_tile_cartesian_indices(tiling_setup, itile)
+        # @assert itile_cartesian[1] == tiling_setup._tile_cartesian_indexes[itile][1] "$itile_cartesian -- $(tiling_setup._tile_cartesian_indexes[itile])"
+        # @assert itile_cartesian[2] == tiling_setup._tile_cartesian_indexes[itile][2] "$itile_cartesian -- $(tiling_setup._tile_cartesian_indexes[itile])"
         ijet = first_jet(tiles[itile])
         # println("$itile $itile_cartesian - $ijet")
         if ijet == 0
@@ -173,7 +178,8 @@ function find_all_tiled_nearest_neighbours!(tiles::Array{Tile, 2}, flatjets::Fla
         # This means moving in (η,ϕ) indexes, so now we need to map back from the 1D index
         # to the 2D one...
         for jtile_cartesian in rightmost_tiles(tiling_setup._n_tiles_eta, tiling_setup._n_tiles_phi, itile_cartesian[1], itile_cartesian[2])
-            jtile = tiling_setup._tile_linear_indexes[jtile_cartesian[1], jtile_cartesian[2]]
+            jtile = get_tile_linear_index(tiling_setup, jtile_cartesian[1], jtile_cartesian[2])
+            # @assert jtile == tiling_setup._tile_linear_indexes[jtile_cartesian[1], jtile_cartesian[2]]
             jjet = first_jet(tiles[jtile])
             while jjet != 0
                 nn_dist = geometric_distance(eta(flatjets, ijet), phi(flatjets, ijet),
@@ -219,14 +225,14 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	ap = abs(p) # absolute p
 
 	# Input data
-	# jet_objects = copy(objects) # Don't need to copy this, we don't touch it
+	jet_objects = copy(objects) # We will append merged jets, so we need a copy
 	_kt2 = (JetReconstruction.pt.(objects) .^ 2) .^ p
 	_phi = JetReconstruction.phi.(objects)
 	_eta = JetReconstruction.eta.(objects)
-	# index = collect(1:N) # Initial jets are just numbered 1:N
+	_jet_index = collect(1:N) # Initial jets are just numbered 1:N, mapping directly to jet_objects
 
 	# Each jet stores which tile it is in, so need the usual container for that # Needed?
-	# tile_index = zeros(Int, N)
+	_tile_index = zeros(Int, N)
 	# sizehint!(tile_index, N * 2)
 
 	# Linked list: this is the index of the next/previous jet for this tile (0 = the end/beginning)
@@ -242,7 +248,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	jets = T[] # result
 	sequences = Vector{Int}[[x] for x in 1:N]
 
-	flatjets = FlatJets(_kt2, _eta, _phi, _next_jet, _prev_jet,
+	flatjets = FlatJets(_kt2, _eta, _phi, _jet_index, _tile_index, _next_jet, _prev_jet,
                         _nearest_neighbour, _nn_distance, _dij_distance)
 
 	# Tiling
@@ -279,6 +285,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
         # Finalise jet or merge jets?
         if iclosejetB != 0
             # Merge jets A and B
+
         else
             # Finalise jet A
         end

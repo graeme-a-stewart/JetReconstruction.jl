@@ -17,10 +17,10 @@ struct TilingDef
 	_tiles_ieta_max::Int # Max_rapidity / rapidity tile size (needed?)
 
 	# This maps (ieta, iphi) to the linear index of the tile jets
-	_tile_linear_indexes
+	# _tile_linear_indexes
 
 	# And back again...
-	_tile_cartesian_indexes
+	# _tile_cartesian_indexes
 	
 	# Use an inner constructor as _n_tiles and _tile_linear_indexes 
 	# are defined by the other values
@@ -28,7 +28,8 @@ struct TilingDef
 		_n_tiles_eta, _n_tiles_phi, _tiles_ieta_min, _tiles_ieta_max)
 		new(_tiles_eta_min, _tiles_eta_max, _tile_size_eta, _tile_size_phi,
 		_n_tiles_eta, _n_tiles_phi, _n_tiles_eta*_n_tiles_phi, _tiles_ieta_min, _tiles_ieta_max,
-		LinearIndices((1:_n_tiles_eta, 1:_n_tiles_phi)), CartesianIndices((1:_n_tiles_eta, 1:_n_tiles_phi)))
+		# LinearIndices((1:_n_tiles_eta, 1:_n_tiles_phi)), CartesianIndices((1:_n_tiles_eta, 1:_n_tiles_phi))
+		)
 	end
 end
 
