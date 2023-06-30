@@ -192,7 +192,8 @@ function tiled_jet_reconstruct_soa(objects::AbstractArray{T}; p = -1, R = 1.0, r
 	flat_jets = FlatJetSoA(N, _kt2, _eta, _phi, _index)
 
 	# Tiling
-	tiling_setup, tile_jets = setup_tiling(_eta, R)
+	tiling_setup = setup_tiling(_eta, R)
+	tile_jets = Array{TiledJetSoA, 2}(undef, tiling_setup._n_tiles_eta, tiling_setup._n_tiles_phi)
 
 	# Populate tiles, from the initial particles
 	populate_tiles!(tile_jets, tiling_setup, flat_jets, _R2)

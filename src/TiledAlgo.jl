@@ -2,6 +2,75 @@
 
 using Logging
 
+
+"""
+Structure holding the flat jets for a tiled reconstruction
+"""
+mutable struct FlatJets
+	kt2::Vector{Float64}       # p_t^-2
+	eta::Vector{Float64}       # Rapidity
+	phi::Vector{Float64}       # Phi coordinate
+	tiled_index::Vector{UInt}  # My tile index
+	active::Vector{Bool}       # Is this jet active or not?
+end
+
+"""
+Structure holding the tiles for the reconstruction
+"""
+# # This is the mutable part
+# mutable struct JetList
+# 	jets::Vector{Uint}
+# end
+
+struct Tile
+	jets::Vector{UInt} 					# Jet indexes
+	neighbour_tiles::Vector{UInt}		# Nearest neighbour tiles
+	right_neighbour_tiles::Vector{UInt} # Rightmost NN tiles (used for initial sweep)
+	Tile() = begin
+		j = UInt[]
+		sizehint!(j, 10)
+		nn = UInt[]
+		sizehint!(nn, 8)
+		rnn = UInt[]
+		sizehint!(rnn, 4)
+		new(j, nn, rnn)
+	end
+end
+
+"""
+Populate the tiles with nearest neighbour information
+"""
+function populate_tile_nn!(tiles::Array{Tile, 2}, tiling_setup)
+	# To help with later iterations, we now find and cache neighbour tile indexes
+	@inbounds for iη in 1:tiling_setup._n_tiles_eta
+		@inbounds for iϕ in 1:tiling_setup._n_tiles_phi
+			# Clamping ensures we don't go beyond the limits of the eta tiling (which do not wrap)
+			@inbounds for jη in clamp(iη - 1, 1, tiling_setup._n_tiles_eta):clamp(iη + 1, 1, tiling_setup._n_tiles_eta)
+				δη = jη - iη
+				@inbounds for jϕ in iϕ-1:iϕ+1
+					if (jη == iη && jϕ == iϕ)
+						continue
+					end
+					# Phi tiles wrap around to meet each other
+					δϕ = jϕ - iϕ # Hold this unwrapped value for rightmost comparison
+					if (jϕ == 0)
+						jϕ = tiling_setup._n_tiles_phi
+					elseif (jϕ == tiling_setup._n_tiles_phi + 1)
+						jϕ = 1
+					end
+					# Tile is a neighbour
+					tile_index = tiling_setup._tile_linear_indexes[jη, jϕ]
+					push!(tiles[iη, iϕ].neighbour_tiles, tile_index)
+					# Only the tile directly above or to the right are _righttiles
+					if (((δη == -1) && (δϕ == 0)) || (δϕ == 1))
+						push!(tiles[iη, iϕ].right_neighbour_tiles, tile_index)
+					end
+				end
+			end
+		end
+	end
+end
+
 """
 Tiled jet reconstruction
 """
@@ -11,36 +80,48 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	@debug "Initial particles: $(N)"
 
 	# params
-	_R2::Float64 = R * R
-	_p = (round(p) == p) ? Int(p) : p # integer p if possible
-	ap = abs(_p) # absolute p
+	R2::Float64 = R * R
+	p = (round(p) == p) ? Int(p) : p # integer p if possible
+	ap = abs(p) # absolute p
 
 	# Input data
-	_objects = copy(objects)
-	sizehint!(_objects, N * 2)
-	_kt2 = (JetReconstruction.pt.(_objects) .^ 2) .^ _p
-	sizehint!(_kt2, N * 2)
-	_phi = JetReconstruction.phi.(_objects)
-	sizehint!(_phi, N * 2)
-	_eta = JetReconstruction.eta.(_objects)
-	sizehint!(_eta, N * 2)
-	_index = collect(1:N) # Initial jets are just numbered 1:N
-	sizehint!(_index, N * 2)
+	# jet_objects = copy(objects)
+	# sizehint!(objects, N * 2)
+	kt2 = (JetReconstruction.pt.(objects) .^ 2) .^ p
+	sizehint!(kt2, N * 2)
+	phi = JetReconstruction.phi.(objects)
+	sizehint!(phi, N * 2)
+	eta = JetReconstruction.eta.(objects)
+	sizehint!(eta, N * 2)
+	# index = collect(1:N) # Initial jets are just numbered 1:N
+	# sizehint!(index, N * 2)
 
 	# Each jet stores which tile it is in, so need the usual container for that
+	tile_index = Int[]
+	sizehint!(tile_index, N * 2)
 
+	# For debugging and assertions, keep track if this is in active pseudojet or not
+	active = fill(true, N)
+	sizehint!(active, N * 2)
 
 	# returned values
 	jets = T[] # result
-	_sequences = Vector{Int}[[x] for x in 1:N]
+	sequences = Vector{Int}[[x] for x in 1:N]
 
-	flat_jets = FlatJetSoA(N, _kt2, _eta, _phi, _index)
+	flat_jets = FlatJets(kt2, eta, phi, tile_index, active)
 
 	# Tiling
-	tiling_setup, tile_jets = setup_tiling(_eta, R)
+	tiling_setup= setup_tiling(eta, R)
+	@debug("Tiles: $(tiling_setup._n_tiles_eta)x$(tiling_setup._n_tiles_phi)")
+
+	# # Setup the tiling array
+	tiles = Array{Tile,2}(undef, (tiling_setup._n_tiles_eta, tiling_setup._n_tiles_phi))
+	@inbounds for itile in eachindex(tiles)
+		tiles[itile] = Tile()
+	end
 
 	# # Populate tiles, from the initial particles
-	# populate_tiles!(tile_jets, tiling_setup, flat_jets, _R2)
+	populate_tile_nn!(tiles, tiling_setup)
 
 	# # Setup initial nn, nndist and dij values
 	# min_dij_itile, min_dij_ijet, min_dij = find_all_nearest_neighbours!(tile_jets, tiling_setup, flat_jets, _R2)
@@ -111,9 +192,9 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	# 		push!(flat_jets._kt2, (JetReconstruction.pt(merged_jet)^2)^_p)
 	# 		merged_jet_index = lastindex(_objects)
 
-	# 		ieta_merged_jet, iphi_merged_jet = get_tile(tiling_setup, flat_jets._eta[merged_jet_index],
+	# 		iη_merged_jet, iϕ_merged_jet = get_tile(tiling_setup, flat_jets._eta[merged_jet_index],
 	# 			flat_jets._phi[merged_jet_index])
-	# 		itile_merged_jet = tiling_setup._tile_linear_indexes[ieta_merged_jet, iphi_merged_jet]
+	# 		itile_merged_jet = tiling_setup._tile_linear_indexes[iη_merged_jet, iϕ_merged_jet]
 
 	# 		# Set the _sequence for the two merged jets, which is the merged jet index
 	# 		push!(_sequences, [_sequences[index_jetA]; _sequences[index_jetB]; merged_jet_index])
@@ -173,5 +254,5 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	# 	end
 	# end
     # The sequences return value is a list of all jets that merged to this one
-	jets, _sequences
+	jets, sequences
 end

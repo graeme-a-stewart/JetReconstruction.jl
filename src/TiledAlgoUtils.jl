@@ -113,11 +113,7 @@ function setup_tiling(_eta::Vector{T}, Rparam::AbstractFloat) where T <: Abstrac
 		n_tiles_eta, n_tiles_phi,
 		tiles_ieta_min, tiles_ieta_max)
 
-	# println(tiling_setup)
-	# exit(0)
-
-	tile_jets = Array{TiledJetSoA, 2}(undef, n_tiles_eta, n_tiles_phi)
-	tiling_setup, tile_jets
+	tiling_setup
 end
 
 """
