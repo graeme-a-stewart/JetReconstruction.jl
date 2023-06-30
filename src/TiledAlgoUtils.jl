@@ -171,7 +171,7 @@ function populate_tiles!(tile_jets::Array{TiledJetSoA, 2}, tiling_setup::TilingD
 			set_eta!(this_tile_jets, itilejet, eta(flat_jets, ijet))
 			set_phi!(this_tile_jets, itilejet, phi(flat_jets, ijet))
 			set_index!(this_tile_jets, itilejet, index(flat_jets, ijet))
-			set_nn!(this_tile_jets, itilejet, TiledNN(0,0))
+			set_nn!(this_tile_jets, itilejet, TiledSoACoord(0,0))
 			set_nndist!(this_tile_jets, itilejet, R2)
 		end
 		tile_jets[itile] = this_tile_jets

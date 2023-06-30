@@ -75,7 +75,7 @@ end
 """
 Scan a tile and all of its neighbours for jet distances
 """
-function scan_neighbors!(tile_jets::Array{TiledJetSoA, 2}, jet_tile_index::TiledNN, R2::AbstractFloat)
+function scan_neighbors!(tile_jets::Array{TiledJetSoA, 2}, jet_tile_index::TiledSoACoord, R2::AbstractFloat)
     itile = jet_tile_index._itile
 	tile = tile_jets[itile]
 	ijet = jet_tile_index._ijet
@@ -203,7 +203,7 @@ function tiled_jet_reconstruct_soa(objects::AbstractArray{T}; p = -1, R = 1.0, r
 	# Move some variables outside the loop, to avoid per-loop allocations
 	itouched_tiles = Set{Int}()
 	sizehint!(itouched_tiles, 12)
-	tainted_slots = Set{TiledNN}()
+	tainted_slots = Set{TiledSoACoord}()
 	sizehint!(tainted_slots, 4)
 
 	# At each iteration we either merge two jets to one, or finalise a jet
@@ -234,7 +234,7 @@ function tiled_jet_reconstruct_soa(objects::AbstractArray{T}; p = -1, R = 1.0, r
 		if tile_jets[min_dij_itile]._nn[min_dij_ijet]._itile == 0
 			# Final jet
             jet_merger = false
-			index_tile_jetA = TiledNN(min_dij_itile, min_dij_ijet)
+			index_tile_jetA = TiledSoACoord(min_dij_itile, min_dij_ijet)
 			index_jetA = tile_jets[min_dij_itile]._index[min_dij_ijet]
 			empty!(tainted_slots)
 			push!(tainted_slots, index_tile_jetA)
@@ -245,7 +245,7 @@ function tiled_jet_reconstruct_soa(objects::AbstractArray{T}; p = -1, R = 1.0, r
 		else
 			# Merge two jets
             jet_merger = true
-			index_tile_jetA = TiledNN(min_dij_itile, min_dij_ijet)
+			index_tile_jetA = TiledSoACoord(min_dij_itile, min_dij_ijet)
 			index_tile_jetB = tile_jets[min_dij_itile]._nn[min_dij_ijet]
 			index_jetA = tile_jets[min_dij_itile]._index[min_dij_ijet]
 			index_jetB = nnindex(tile_jets, min_dij_itile, min_dij_ijet)
@@ -283,19 +283,19 @@ function tiled_jet_reconstruct_soa(objects::AbstractArray{T}; p = -1, R = 1.0, r
 			if itile_merged_jet == index_tile_jetA._itile
 				# Put the new jet into jetA's slot
 				insert_jet!(tile_jets[itile_merged_jet], index_tile_jetA._ijet, merged_jet_index, flat_jets, _R2)
-				index_tile_merged_jet = TiledNN(itile_merged_jet, index_tile_jetA._ijet)
+				index_tile_merged_jet = TiledSoACoord(itile_merged_jet, index_tile_jetA._ijet)
 				# Now zap jetB
 				push!(tainted_slots, remove_jet!(tile_jets, index_tile_jetB))
 			elseif itile_merged_jet == index_tile_jetB._itile
 				# Use jetB's slot
 				insert_jet!(tile_jets[itile_merged_jet], index_tile_jetB._ijet, merged_jet_index, flat_jets, _R2)
-				index_tile_merged_jet = TiledNN(itile_merged_jet, index_tile_jetB._ijet)
+				index_tile_merged_jet = TiledSoACoord(itile_merged_jet, index_tile_jetB._ijet)
 				# Now zap jetA
 				push!(tainted_slots, remove_jet!(tile_jets, index_tile_jetA))
 			else
                 # Merged jet is in a different tile
                 add_jet!(tile_jets[itile_merged_jet], merged_jet_index, flat_jets, _R2)
-                index_tile_merged_jet = TiledNN(itile_merged_jet, tile_jets[itile_merged_jet]._size)
+                index_tile_merged_jet = TiledSoACoord(itile_merged_jet, tile_jets[itile_merged_jet]._size)
                 # Now zap both A and B
                 push!(tainted_slots, remove_jet!(tile_jets, index_tile_jetA))
                 push!(tainted_slots, remove_jet!(tile_jets, index_tile_jetB))
@@ -320,9 +320,9 @@ function tiled_jet_reconstruct_soa(objects::AbstractArray{T}; p = -1, R = 1.0, r
 			tile = tile_jets[itouched_tile]
 			@inbounds for ijet in 1:tile._size
 				if tile._nn[ijet] in tainted_slots
-					tile._nn[ijet] = TiledNN(0, 0)
+					tile._nn[ijet] = TiledSoACoord(0, 0)
 					tile._nndist[ijet] = _R2
-					scan_neighbors!(tile_jets, TiledNN(itouched_tile, ijet), _R2)
+					scan_neighbors!(tile_jets, TiledSoACoord(itouched_tile, ijet), _R2)
 				end
 			end
 		end

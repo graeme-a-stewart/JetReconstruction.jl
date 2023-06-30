@@ -30,28 +30,28 @@ struct TilingDef
 end
 
 """Nearest neighbour coordinates"""
-mutable struct TiledNN
+mutable struct TiledSoACoord
     _itile::Int           # Jet tile index (flattened)
     _ijet::Int            # Jet position in this tile
 end
 
 """Correct hash for the coordinate pair"""
-hash(x::TiledNN, h::UInt) = begin
+hash(x::TiledSoACoord, h::UInt) = begin
 	my_hash = hash(hash(x._itile, UInt(0)), hash(x._ijet, UInt(0)))
 	hash(my_hash, h)
 end
 
 """Equality operator for tiled coordinates"""
-==(x::TiledNN,y::TiledNN) = hash(x, UInt(0))==hash(y, UInt(0))
+==(x::TiledSoACoord,y::TiledSoACoord) = hash(x, UInt(0))==hash(y, UInt(0))
 
 """Setter for nearest neighbour"""
-set_nn!(mynn::TiledNN, itile, ijet) = begin
+set_nn!(mynn::TiledSoACoord, itile, ijet) = begin
     mynn._itile = itile
     mynn._ijet = ijet
 end
 
 """Do we have a NN, or not"""
-valid_nn(mynn::TiledNN) = begin
+valid_nn(mynn::TiledSoACoord) = begin
     return mynn._itile > 0
 end
 
@@ -63,7 +63,7 @@ mutable struct TiledJetSoA
 	_eta::Vector{Float64}         # Rapidity
 	_phi::Vector{Float64}         # Phi coordinate
 	_index::Vector{Int}     # My jet index
-	_nn::Vector{TiledNN}    # Nearest neighbour location (if (0,0) no nearest neighbour)
+	_nn::Vector{TiledSoACoord}    # Nearest neighbour location (if (0,0) no nearest neighbour)
 	_nndist::Vector{Float64}      # Distance to my nearest neighbour
     _dij::Vector{Float64}         # Jet metric distance to my nearest neighbour
     _righttiles::Vector{Int} # Indexes of all tiles to my right
@@ -75,7 +75,7 @@ mutable struct TiledJetSoA
 			Vector{Float64}(undef, n),
 			Vector{Float64}(undef, n),
 			Vector{Int}(undef, n),
-			Vector{TiledNN}(undef, n),
+			Vector{TiledSoACoord}(undef, n),
 			Vector{Float64}(undef, n),
 			Vector{Float64}(undef, n),
 			Vector{Int}(undef, 0),
@@ -110,7 +110,7 @@ insert_jet!(tile::TiledJetSoA, slot::Int, index::Int, flat_jets::FlatJetSoA, R2:
 	tile._eta[slot] = flat_jets._eta[index]
 	tile._phi[slot] = flat_jets._phi[index]
 	tile._index[slot] = index
-	tile._nn[slot] = TiledNN(0, 0)
+	tile._nn[slot] = TiledSoACoord(0, 0)
 	tile._nndist[slot] = R2
 	tile._dij[slot] = R2 * tile._kt2[slot]
 end
@@ -122,13 +122,13 @@ add_jet!(tile::TiledJetSoA, index::Int, flat_jets::FlatJetSoA, R2::AbstractFloat
 	push!(tile._eta, flat_jets._eta[index])
 	push!(tile._phi, flat_jets._phi[index])
 	push!(tile._index, index)
-	push!(tile._nn, TiledNN(0, 0))
+	push!(tile._nn, TiledSoACoord(0, 0))
 	push!(tile._nndist, R2)
 	push!(tile._dij, R2 * flat_jets._kt2[index])
 end
 
 """Remove a jet from the tile at the given tile index and repack if needed"""
-remove_jet!(tile_jets::Array{TiledJetSoA, 2}, tile_index::TiledNN) = begin
+remove_jet!(tile_jets::Array{TiledJetSoA, 2}, tile_index::TiledSoACoord) = begin
 	tile = tile_jets[tile_index._itile]
 	if tile._size != tile_index._ijet
 		# Need to copy the last jet into the slot, to ensure a contiguous array
@@ -140,9 +140,9 @@ remove_jet!(tile_jets::Array{TiledJetSoA, 2}, tile_index::TiledNN) = begin
 		tile._nn[tile_index._ijet] = tile._nn[tile._size]
 		tile._nndist[tile_index._ijet] = tile._nndist[tile._size]
 		tile._dij[tile_index._ijet] = tile._dij[tile._size]
-		tainted = TiledNN(tile_index._itile, tile._size)
+		tainted = TiledSoACoord(tile_index._itile, tile._size)
 	else
-		tainted = TiledNN(0, 0)
+		tainted = TiledSoACoord(0, 0)
 	end
 	# Physically reduce the arrays - safer while developing to avoid accidents!
 	# For optimised code, consider not doing this, as we can use _size as a bound when scanning
@@ -159,7 +159,7 @@ remove_jet!(tile_jets::Array{TiledJetSoA, 2}, tile_index::TiledNN) = begin
 	return tainted
 end
 
-get_jet(tile_jets::Array{TiledJetSoA, 2}, tile_index::TiledNN) = begin
+get_jet(tile_jets::Array{TiledJetSoA, 2}, tile_index::TiledSoACoord) = begin
 	tile = tile_jets[tile_index._itile]
 	ijet = tile_index._ijet
 	return "($(tile._eta[ijet]), $(tile._phi[ijet]) [$(tile._index[ijet])]) -> $(tile._nn[ijet])"
@@ -184,5 +184,5 @@ set_kt2!(j, n::Int, v) = j._kt2[n] = v
 set_eta!(j, n::Int, v) = j._eta[n] = v
 set_phi!(j, n::Int, v) = j._phi[n] = v
 set_index!(j, n::Int, v) = j._index[n] = v
-set_nn!(j, n::Int, v::TiledNN) = j._nn[n] = v
+set_nn!(j, n::Int, v::TiledSoACoord) = j._nn[n] = v
 set_nndist!(j, n::Int, v) = j._nndist[n] = v

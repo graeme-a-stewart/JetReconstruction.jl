@@ -16,7 +16,7 @@ include("HepMC3.jl")
 export HepMC3
 
 ## N2Plain algorithm
-# Algorithmic part, simple sequential implementation
+# Algorithmic part for simple sequential implementation
 include("Algo.jl")
 export sequential_jet_reconstruct, kt_algo, anti_kt_algo, anti_kt_algo_alt, cambridge_aachen_algo
 
