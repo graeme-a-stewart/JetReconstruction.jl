@@ -2,40 +2,55 @@
 
 using Logging
 
-
 """
 Structure holding the flat jets for a tiled reconstruction
 """
 mutable struct FlatJets
-	kt2::Vector{Float64}       # p_t^-2
-	eta::Vector{Float64}       # Rapidity
-	phi::Vector{Float64}       # Phi coordinate
-	tiled_index::Vector{UInt}  # My tile index
-	active::Vector{Bool}       # Is this jet active or not?
+    # Physics quantities
+	kt2::Vector{Float64}       	# p_t^-2*power
+	eta::Vector{Float64}        # Rapidity
+	phi::Vector{Float64}        # Phi coordinate
+
+    # Tiles and linked list 
+	# tile_index::Vector{Int}    # My tile index
+	next_jet::Vector{Int}      # This is the linked list index of the next jet for this tile (0→end)
+    prev_jet::Vector{Int}      # This is the linked list index of the previous jet for this tile (0→first)
+
+    # Reconstruction parameters
+    nearest_neighbour::Vector{Int}
+    nn_distance::Vector{Float64}
+    dij_distance::Vector{Float64}
 end
+
+# Accessor functions for the jet array
+kt2(jets::FlatJets, n::Int) = jets.kt2[n]
+eta(jets::FlatJets, n::Int) = jets.eta[n]
+phi(jets::FlatJets, n::Int) = jets.phi[n]
+# tile_index(jets::FlatJets, n::Int) = jets.tile_index[n]
+next_jet(jets::FlatJets, n::Int) = jets.next_jet[n]
+prev_jet(jets::FlatJets, n::Int) = jets.prev_jet[n]
+nearest_neighbour(jets::FlatJets, n::Int) = jets.nearest_neighbour[n]
+nn_distance(jets::FlatJets, n::Int) = jets.nn_distance[n]
+dij_distance(jets::FlatJets, n::Int) = jets.dij_distance[n]
+
+# Setters
+# set_tile_index!(jets::FlatJets, n::Int, i) = jets.tile_index[n] = i
+set_next_jet!(jets::FlatJets, n::Int, next::Int) = jets.next_jet[n] = next
+set_prev_jet!(jets::FlatJets, n::Int, prev::Int) = jets.prev_jet[n] = prev 
+
+set_nearest_neighbour!(jets::FlatJets, n::Int, v::Int) = jets.nearest_neighbour[n] = v
+set_nn_distance!(jets::FlatJets, n::Int, v::Float64) = jets.nn_distance[n] = v
+set_dij_distance!(jets::FlatJets, n::Int, v::Float64) = jets.dij_distance[n] = v
+
 
 """
 Structure holding the tiles for the reconstruction
 """
-# # This is the mutable part
-# mutable struct JetList
-# 	jets::Vector{Uint}
-# end
-
-struct Tile
-	jets::Vector{UInt} 					# Jet indexes
-	neighbour_tiles::Vector{UInt}		# Nearest neighbour tiles
-	right_neighbour_tiles::Vector{UInt} # Rightmost NN tiles (used for initial sweep)
-	Tile() = begin
-		j = UInt[]
-		sizehint!(j, 10)
-		nn = UInt[]
-		sizehint!(nn, 8)
-		rnn = UInt[]
-		sizehint!(rnn, 4)
-		new(j, nn, rnn)
-	end
+ mutable struct Tile
+    first_jet::Int
 end
+first_jet(t::Tile) = t.first_jet
+set_first_jet!(t::Tile, first::Int) = t.first_jet = first
 
 """
 Populate the tiles with nearest neighbour information
@@ -72,6 +87,60 @@ function populate_tile_nn!(tiles::Array{Tile, 2}, tiling_setup)
 end
 
 """
+Populate the tiles with their first jets and construct the linked lists in the flat jet array
+"""
+function populate_tile_lists!(tiles::Array{Tile, 2}, flatjets::FlatJets, tiling_setup::TilingDef)
+    for ijet in 1:size(flatjets.eta)[1]
+        tile_η, tile_ϕ = get_tile(tiling_setup, eta(flatjets, ijet), phi(flatjets, ijet))
+        # This is quite expensive, like ~12us, do we really need it?
+        # set_tile_index!(flatjets, ijet, tiling_setup._tile_linear_indexes[tile_η, tile_ϕ])
+        if tiles[tile_η, tile_ϕ].first_jet == 0
+            # First jet in this tile
+            tiles[tile_η, tile_ϕ].first_jet = ijet
+        else
+            # Insert this jet at the beginning of the list for this tile
+            old_first_jet = first_jet(tiles[tile_η, tile_ϕ])
+            set_first_jet!(tiles[tile_η, tile_ϕ], ijet)
+            set_next_jet!(flatjets, ijet, old_first_jet)
+            set_prev_jet!(flatjets, old_first_jet, ijet)
+        end
+    end
+end
+
+
+"""
+Check that the state of tiling is consistent
+- Every live pseudojet should be in one and only one tile
+- Each tile should have the correct start point for its pseudojets
+"""
+function debug_tiles(tiles::Array{Tile, 2}, flatjets::FlatJets)
+    msg = "Testing tile structures\n"
+    jet_tile_index = similar(flatjets.kt2, Int)
+    fill!(jet_tile_index, 0)
+    for itile in eachindex(tiles)
+        tile = tiles[itile]
+        ijet = first_jet(tile)
+        while ijet != 0
+            if jet_tile_index[ijet] != 0
+                msg *= "Error: Found jet $jet already in tile $ijet\n"
+            else
+                jet_tile_index[ijet] = itile
+            end
+            ijet = next_jet(flatjets, ijet)
+        end
+    end
+    for ijet in eachindex(jet_tile_index)
+        if jet_tile_index[ijet] == 0
+            msg *= "Error: Jet $ijet is not associated with a tile"
+        end
+    end
+    msg
+end
+
+function find_all_tiled_nearest_neighbours!(tiles::Array{Tile, 2}, flatjets::FlatJets, R2)
+end
+
+"""
 Tiled jet reconstruction
 """
 function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recombine = +) where T
@@ -85,7 +154,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	ap = abs(p) # absolute p
 
 	# Input data
-	# jet_objects = copy(objects)
+	# jet_objects = copy(objects) # Don't need to copy this, we don't touch it
 	# sizehint!(objects, N * 2)
 	kt2 = (JetReconstruction.pt.(objects) .^ 2) .^ p
 	sizehint!(kt2, N * 2)
@@ -96,35 +165,47 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	# index = collect(1:N) # Initial jets are just numbered 1:N
 	# sizehint!(index, N * 2)
 
-	# Each jet stores which tile it is in, so need the usual container for that
-	tile_index = Int[]
-	sizehint!(tile_index, N * 2)
+	# Each jet stores which tile it is in, so need the usual container for that # Needed?
+	# tile_index = zeros(Int, N)
+	# sizehint!(tile_index, N * 2)
 
-	# For debugging and assertions, keep track if this is in active pseudojet or not
-	active = fill(true, N)
-	sizehint!(active, N * 2)
+	# Linked list: this is the index of the next/previous jet for this tile (0 = the end/beginning)
+	next_jet = zeros(Int, N)
+	sizehint!(next_jet, N * 2)
+    prev_jet = zeros(Int, N)
+	sizehint!(prev_jet, N * 2)
+
+    # Nearest neighbour parameters
+    nearest_neighbour = zeros(Int, N)
+    nn_distance = fill(1.0e9, N)
+    dij_distance = fill(1.0e9, N)
+
 
 	# returned values
 	jets = T[] # result
 	sequences = Vector{Int}[[x] for x in 1:N]
 
-	flat_jets = FlatJets(kt2, eta, phi, tile_index, active)
+	flatjets = FlatJets(kt2, eta, phi, next_jet, prev_jet,
+                        nearest_neighbour, nn_distance, dij_distance)
 
 	# Tiling
 	tiling_setup= setup_tiling(eta, R)
 	@debug("Tiles: $(tiling_setup._n_tiles_eta)x$(tiling_setup._n_tiles_phi)")
 
-	# # Setup the tiling array
+	# Setup the tiling array
 	tiles = Array{Tile,2}(undef, (tiling_setup._n_tiles_eta, tiling_setup._n_tiles_phi))
 	@inbounds for itile in eachindex(tiles)
-		tiles[itile] = Tile()
+		tiles[itile] = Tile(0)
 	end
 
-	# # Populate tiles, from the initial particles
-	populate_tile_nn!(tiles, tiling_setup)
+    # Populate tile linked lists, from the initial particles
+	populate_tile_lists!(tiles, flatjets, tiling_setup)
 
-	# # Setup initial nn, nndist and dij values
-	# min_dij_itile, min_dij_ijet, min_dij = find_all_nearest_neighbours!(tile_jets, tiling_setup, flat_jets, _R2)
+    # Useful state debugging
+    print(debug_tiles(tiles, flatjets))
+
+	# Setup initial nn, nndist and dij values
+	# min_dij_itile, min_dij_ijet, min_dij = find_all_tiled_nearest_neighbours!(tiles, flatjets, tiling_setup, R2)
 
 	# # Move some variables outside the loop, to avoid per-loop allocations
 	# itouched_tiles = Set{Int}()
@@ -132,11 +213,14 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	# tainted_slots = Set{TiledSoACoord}()
 	# sizehint!(tainted_slots, 4)
 
-	# # At each iteration we either merge two jets to one, or finalise a jet
-	# # Thus each time we lose one jet, and it therefore takes N iterations to complete
-	# # the algorithm
-	# for iteration in 1:N
-    #     @debug "Iteration $(iteration)"
+	# At each iteration we either merge two jets to one, or finalise a jet
+	# Thus each time we lose one jet, and it therefore takes N iterations to complete
+	# the algorithm
+	for iteration in 1:N
+        @debug "Iteration $(iteration)"
+
+
+    end
 
 	# 	# For the first iteration the nearest neighbour is known
 	# 	if iteration > 1
@@ -186,14 +270,14 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
     #         end
 
 	# 		push!(_objects, merged_jet)
-	# 		push!(flat_jets._index, length(_objects))
-	# 		push!(flat_jets._phi, JetReconstruction.phi(merged_jet))
-	# 		push!(flat_jets._eta, JetReconstruction.eta(merged_jet))
-	# 		push!(flat_jets._kt2, (JetReconstruction.pt(merged_jet)^2)^_p)
+	# 		push!(flatjets._index, length(_objects))
+	# 		push!(flatjets._phi, JetReconstruction.phi(merged_jet))
+	# 		push!(flatjets._eta, JetReconstruction.eta(merged_jet))
+	# 		push!(flatjets._kt2, (JetReconstruction.pt(merged_jet)^2)^_p)
 	# 		merged_jet_index = lastindex(_objects)
 
-	# 		iη_merged_jet, iϕ_merged_jet = get_tile(tiling_setup, flat_jets._eta[merged_jet_index],
-	# 			flat_jets._phi[merged_jet_index])
+	# 		iη_merged_jet, iϕ_merged_jet = get_tile(tiling_setup, flatjets._eta[merged_jet_index],
+	# 			flatjets._phi[merged_jet_index])
 	# 		itile_merged_jet = tiling_setup._tile_linear_indexes[iη_merged_jet, iϕ_merged_jet]
 
 	# 		# Set the _sequence for the two merged jets, which is the merged jet index
@@ -208,19 +292,19 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	# 		push!(tainted_slots, index_tile_jetB)
 	# 		if itile_merged_jet == index_tile_jetA._itile
 	# 			# Put the new jet into jetA's slot
-	# 			insert_jet!(tile_jets[itile_merged_jet], index_tile_jetA._ijet, merged_jet_index, flat_jets, _R2)
+	# 			insert_jet!(tile_jets[itile_merged_jet], index_tile_jetA._ijet, merged_jet_index, flatjets, _R2)
 	# 			index_tile_merged_jet = TiledSoACoord(itile_merged_jet, index_tile_jetA._ijet)
 	# 			# Now zap jetB
 	# 			push!(tainted_slots, remove_jet!(tile_jets, index_tile_jetB))
 	# 		elseif itile_merged_jet == index_tile_jetB._itile
 	# 			# Use jetB's slot
-	# 			insert_jet!(tile_jets[itile_merged_jet], index_tile_jetB._ijet, merged_jet_index, flat_jets, _R2)
+	# 			insert_jet!(tile_jets[itile_merged_jet], index_tile_jetB._ijet, merged_jet_index, flatjets, _R2)
 	# 			index_tile_merged_jet = TiledSoACoord(itile_merged_jet, index_tile_jetB._ijet)
 	# 			# Now zap jetA
 	# 			push!(tainted_slots, remove_jet!(tile_jets, index_tile_jetA))
 	# 		else
     #             # Merged jet is in a different tile
-    #             add_jet!(tile_jets[itile_merged_jet], merged_jet_index, flat_jets, _R2)
+    #             add_jet!(tile_jets[itile_merged_jet], merged_jet_index, flatjets, _R2)
     #             index_tile_merged_jet = TiledSoACoord(itile_merged_jet, tile_jets[itile_merged_jet]._size)
     #             # Now zap both A and B
     #             push!(tainted_slots, remove_jet!(tile_jets, index_tile_jetA))
