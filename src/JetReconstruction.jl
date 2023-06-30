@@ -15,9 +15,15 @@ export PseudoJet, rap, phi, pt2
 include("HepMC3.jl")
 export HepMC3
 
+## N2Plain algorithm
 # Algorithmic part, simple sequential implementation
 include("Algo.jl")
 export sequential_jet_reconstruct, kt_algo, anti_kt_algo, anti_kt_algo_alt, cambridge_aachen_algo
+
+## Tiled algorithms
+# Common pieces
+include("TiledStructs.jl")
+include("TiledAlgoUtils.jl")
 
 # Algorithmic part, tiled reconstruction strategy with SoA
 include("TiledAlgoSoA.jl")
