@@ -301,7 +301,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
     # print(debug_tiles(tiles, flatjets))
 
 	# Setup initial nn, nndist and dij values
-	# find_all_tiled_nearest_neighbours!(tiles, flatjets, tiling_setup, R2)
+	find_all_tiled_nearest_neighbours!(tiles, flatjets, tiling_setup, R2)
 
     # A few allocations outside the loop
     itouched_tiles = Set{Int}()
