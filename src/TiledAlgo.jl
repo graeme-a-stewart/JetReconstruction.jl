@@ -182,6 +182,7 @@ Complete scan over all tiles to setup the nearest neighbour mappings at the begi
 """
 function find_all_tiled_nearest_neighbours!(tiles::Array{Tile, 2}, flatjets::FlatJets, tiling_setup::TilingDef, R2)
     # Iterate tile by tile...
+    # tile_jet_list = Vector{Int}()
     for itile in eachindex(tiles)
         itile_cartesian = get_tile_cartesian_indices(tiling_setup, itile)
         ## Debug for checking that my index calculations are correct
@@ -190,9 +191,14 @@ function find_all_tiled_nearest_neighbours!(tiles::Array{Tile, 2}, flatjets::Fla
 
         # Take a Vector here, because we only iterate over the upper triangle of combinations
         # So it should be worth the cost of having an ordered collection
-        tile_jet_list = Vector{Int}(collect(tiles[itile].jets))
-        for (ijet_tile, ijet) in enumerate(tile_jet_list)
-            for jjet in tile_jet_list[(ijet_tile+1):lastindex(tile_jet_list)]
+        # tile_jet_list = collect(tiles[itile].jets)
+        # for (ijet_tile, ijet) in enumerate(tile_jet_list)
+        #     for jjet in tile_jet_list[(ijet_tile+1):lastindex(tile_jet_list)]
+        for ijet in tiles[itile].jets
+            for jjet in tiles[itile].jets
+                if ijet == jjet
+                    continue
+                end
                 nn_dist = geometric_distance(eta(flatjets, ijet), phi(flatjets, ijet),
                     eta(flatjets, jjet), phi(flatjets, jjet))
                 if nn_dist < nn_distance(flatjets, ijet)
