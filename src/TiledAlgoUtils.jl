@@ -197,6 +197,44 @@ function Base.iterate(t::rightmost_tiles, state=1)
 end
 
 """
+Iterator for the indexes of neighbouring tiles for a given Cartesian tile index
+		XXX
+		X.X
+		XXX
+	- η coordinate must be in range, ϕ coordinate wraps
+
+"""
+struct neighbour_tiles
+    n_η::Int		# Number of η tiles
+    n_ϕ::Int		# Number of ϕ tiles
+    start_η::Int	# Centre η tile coordinate
+    start_ϕ::Int	# Centre ϕ tile coordinate
+end
+
+function Base.iterate(t::neighbour_tiles, state=1)
+    mapping = ((-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1))
+	# Skip for top row in η
+    if t.start_η == 1 && state == 1
+        state = 4
+    end
+	# Skip for bottom row in η
+	if t.start_η == t.n_η && state == 6
+		state = 9
+	end
+    while state <= 8
+        η = t.start_η + mapping[state][1]
+        ϕ = t.start_ϕ + mapping[state][2]
+        if ϕ > t.n_ϕ
+            ϕ = 1
+        elseif ϕ < 1
+            ϕ = t.n_ϕ
+        end
+        return (η,ϕ), state+1
+    end
+    return nothing
+end
+
+"""
 Populate tiling structure with our initial jets and setup neighbour tile caches
 """
 function populate_tiles!(tile_jets::Array{TiledJetSoA, 2}, tiling_setup::TilingDef,
