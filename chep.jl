@@ -266,9 +266,9 @@ main() = begin
 	nothing
 end
 
-# The issue is that running through the debugger actually has
-# ARGS[0] = "/some/path/.vscode/extensions/julialang.language-julia-1.47.2/scripts/debugger/run_debugger.jl"
-# so then the program does nothing at all if it tests for just abspath(PROGRAM_FILE) == @__FILE__
+# The issue is that running through the debugger in VS Code actually has
+# ARGS[0] = "/some/path/.vscode/extensions/julialang.language-julia-1.47.2/scripts/debugger/run_debugger.jl",
+# so then the program does nothing at all if it only tests for abspath(PROGRAM_FILE) == @__FILE__
 if (abspath(PROGRAM_FILE) == @__FILE__) || (basename(PROGRAM_FILE) == "run_debugger.jl")
 	main()
 end
