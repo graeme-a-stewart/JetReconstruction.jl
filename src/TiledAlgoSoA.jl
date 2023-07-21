@@ -269,7 +269,7 @@ function tiled_jet_reconstruct_soa(objects::AbstractArray{T}; p = -1, R = 1.0, r
 
 			ieta_merged_jet, iphi_merged_jet = get_tile(tiling_setup, flat_jets._eta[merged_jet_index],
 				flat_jets._phi[merged_jet_index])
-			itile_merged_jet = tiling_setup._tile_linear_indexes[ieta_merged_jet, iphi_merged_jet]
+			itile_merged_jet = get_tile_linear_index(tiling_setup, ieta_merged_jet, iphi_merged_jet)
 
 			# Set the _sequence for the two merged jets, which is the merged jet index
 			push!(_sequences, [_sequences[index_jetA]; _sequences[index_jetB]; merged_jet_index])
