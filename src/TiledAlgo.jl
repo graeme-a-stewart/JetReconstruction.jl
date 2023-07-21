@@ -514,6 +514,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
             # Finalise jet A
             @debug "Finalise jet: jet index $(jet_index(flatjets, iclosejetA))"
             push!(sequences[jet_index(flatjets, iclosejetA)], 0)
+            push!(jets, jet_objects[jet_index(flatjets, iclosejetA)])
             # Remove finalsied jet from its tile jet lists
             delete!(tiles[tile_index(flatjets, iclosejetA)].jets, iclosejetA)
             # Now find out which jets had A as their nearest neighbour - they will 
