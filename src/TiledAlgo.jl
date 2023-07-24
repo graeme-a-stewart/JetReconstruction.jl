@@ -307,13 +307,13 @@ function find_jet_nearest_neighbour!(tiles::Array{Tile, 2}, flatjets::FlatJets, 
 end
 
 """
-Find all of the jets with a particular nearest neighbour,
-scanning the tile of the NN and all neighbours
+Find all of the jets with a particular nearest neighbour
 """
-function find_neighbours_of(tiles::Array{Tile, 2}, flatjets::FlatJets, tiling_setup::TilingDef, inn::Int)
-    neighbours = Set{Int}()
-    for (ijet, nn) in enumerate(flatjets.nearest_neighbour)
-        if nn == inn
+neighbours = Vector{Int}()
+find_neighbours_of(flatjets::FlatJets, innv::Vector{Int}) = begin
+    empty!(neighbours)
+    @inbounds for (ijet, nn) in enumerate(flatjets.nearest_neighbour)
+        if (nn in innv) && !(ijet in innv)
             push!(neighbours, ijet)
         end
     end
@@ -335,11 +335,21 @@ function find_neighbours_of(tiles::Array{Tile, 2}, flatjets::FlatJets, tiling_se
     neighbours
 end
 
+find_neighbours_of(flatjets::FlatJets, inn::Int) = begin
+    empty!(neighbours)
+    @inbounds for (ijet, nn) in enumerate(flatjets.nearest_neighbour)
+        if nn == inn
+            push!(neighbours, ijet)
+        end
+    end
+    neighbours
+end
+
 """
 Look for any jets which had a shuffled jet as their nearest neighbour, which has
 moved from old_index to new_index
 """
-function move_nn_index!(tiles::Array{Tile, 2}, flatjets::FlatJets, tiling_setup::TilingDef, old_index, new_index)
+function move_nn_index!(flatjets::FlatJets, old_index, new_index)
     # Do this in a simple loop, as it's contiguous memory this will be very fast
     @debug "Moving jet $old_index to $new_index"
     for (ijet, nn) in enumerate(flatjets.nearest_neighbour)
@@ -480,14 +490,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
             # Now find out which jets had A or B as their nearest neighbour - they will 
             # need to be rescanned
             empty!(itouched_jets)
-            union!(itouched_jets, find_neighbours_of(tiles, flatjets, tiling_setup, iclosejetA))
-            union!(itouched_jets, find_neighbours_of(tiles, flatjets, tiling_setup, iclosejetB))
-            if iclosejetA in itouched_jets
-                delete!(itouched_jets, iclosejetA)
-            end
-            if iclosejetB in itouched_jets
-                delete!(itouched_jets, iclosejetB)
-            end
+            union!(itouched_jets, find_neighbours_of(flatjets, [iclosejetA, iclosejetB]))
             @debug "Jets to update from A/B neighbours: $(itouched_jets)"
             ####
             # Now push the newjet into jetB's slot, add it to its tile's jet list and to
@@ -504,7 +507,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
             if shuffled_jet != 0
                 delete!(tiles[tile_index(flatjets, iclosejetA)].jets, shuffled_jet)
                 push!(tiles[tile_index(flatjets, iclosejetA)].jets, iclosejetA)
-                move_nn_index!(tiles, flatjets, tiling_setup, shuffled_jet, iclosejetA)
+                move_nn_index!(flatjets, shuffled_jet, iclosejetA)
                 if shuffled_jet in itouched_jets
                     delete!(itouched_jets, shuffled_jet)
                     push!(itouched_jets, iclosejetA)
@@ -524,7 +527,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
             # Now find out which jets had A as their nearest neighbour - they will 
             # need to be rescanned
             empty!(itouched_jets)
-            union!(itouched_jets, find_neighbours_of(tiles, flatjets, tiling_setup, iclosejetA))
+            union!(itouched_jets, find_neighbours_of(flatjets, iclosejetA))
             @debug "Jets to update from A neighbours: $(itouched_jets)"
             # Now kill jetA, shuffling if needed
             shuffled_jet = suppress_flatjet!(flatjets, iclosejetA)
