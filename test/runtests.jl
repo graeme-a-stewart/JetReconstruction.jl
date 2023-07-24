@@ -91,7 +91,7 @@ function original_tests()
     A function for test comparison
     """
     function arrcompare(y, yt; eps=0.1)
-        for i in 1:length(y)
+        for i in eachindex(y)
             if !(sum(abs.(y[i] .- yt[i]) .< eps) == length(y[i]))
                 return false
             end
