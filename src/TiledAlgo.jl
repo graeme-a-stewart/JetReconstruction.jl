@@ -471,7 +471,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
             push!(jet_objects, newjet)
             inewjet = lastindex(jet_objects)
             ## Set the _sequence for the two merged jets, which is the merged jet index
-			push!(sequences, [sequences[jet_index(flatjets, iclosejetA)]; sequences[jet_index(flatjets, iclosejetB)]; inewjet])
+			push!(sequences, [iclosejetA, iclosejetB, inewjet])
 			push!(sequences[jet_index(flatjets, iclosejetA)], inewjet)
 			push!(sequences[jet_index(flatjets, iclosejetB)], inewjet)
             # Remove merged jets from their tile jet lists
