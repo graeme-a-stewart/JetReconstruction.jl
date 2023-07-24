@@ -5,7 +5,7 @@ using Logging
 """
 Structure holding the flat jets for a tiled reconstruction
 """
-mutable struct FlatJets
+struct FlatJets
     # Physics quantities
 	kt2::Vector{Float64}       	# p_t^(-2*power)
 	eta::Vector{Float64}        # Rapidity
@@ -70,9 +70,6 @@ function suppress_flatjet!(jets::FlatJets, n::Int)
         set_phi!(jets, n, phi(jets, ilast))
         set_jet_index!(jets, n, jet_index(jets, ilast))
         set_tile_index!(jets, n, tile_index(jets, ilast))
-        ### TO BE CHECKED
-        # set_next_jet!(jets, n, 0)
-        # set_prev_jet!(jets, n, 0)
         set_nearest_neighbour!(jets, n, nearest_neighbour(jets, ilast))
         set_nn_distance!(jets, n, nn_distance(jets, ilast))
         set_dij_distance!(jets, n, dij_distance(jets, ilast))
@@ -94,7 +91,7 @@ end
 """
 Structure holding the tiles for the reconstruction
 """
- mutable struct Tile
+struct Tile
     jets::Set{Int}
     function Tile()
         new(Set{Int}())
@@ -447,7 +444,14 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
         @debug "Iteration $(iteration) - Active Jets $(lastindex(flatjets.kt2))"
 
         # Find the lowest value of dij_distance
-        iclosejetA = argmin(flatjets.dij_distance)
+        # iclosejetA = argmin(flatjets.dij_distance)
+        iclosejetA = 0
+        dij_dist = 1.0e9
+        for (ijet, dist) in enumerate(flatjets.dij_distance)
+            if dist < dij_dist
+                iclosejetA = ijet
+            end
+        end
         iclosejetB = nearest_neighbour(flatjets, iclosejetA)
         @debug "Closest jets $iclosejetA, $iclosejetB: $(kt2(flatjets, iclosejetA))"
 
