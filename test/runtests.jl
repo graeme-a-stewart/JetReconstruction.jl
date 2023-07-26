@@ -31,6 +31,7 @@ function main()
     # Test each stratgy...
     do_jet_test(N2Plain, fastjet_jets)
     do_jet_test(N2Tiled, fastjet_jets)
+    do_jet_test(N2TiledSoA, fastjet_jets)
 
     # Atell's original test
     original_tests()
@@ -48,6 +49,9 @@ function do_jet_test(strategy::JetRecoStrategy, fastjet_jets;
 	elseif (strategy == N2Tiled)
 		jet_reconstruction = tiled_jet_reconstruct
         strategy_name = "N2Tiled"
+    elseif (strategy == N2TiledSoA)
+		jet_reconstruction = tiled_jet_reconstruct
+        strategy_name = "N2TiledSoA"
 	else
 		throw(ErrorException("Strategy not yet implemented"))
 	end

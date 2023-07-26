@@ -155,19 +155,17 @@ function debug_tiles(tiles::Array{Tile, 2}, flatjets::FlatJets)
     fill!(jet_tile_index, 0)
     for itile in eachindex(tiles)
         tile = tiles[itile]
-        ijet = first_jet(tile)
-        while ijet != 0
+        for ijet in tile.jets
             if jet_tile_index[ijet] != 0
                 msg *= "Error: Found jet $jet already in tile $ijet\n"
             else
                 jet_tile_index[ijet] = itile
             end
-            ijet = next_jet(flatjets, ijet)
         end
     end
     for ijet in eachindex(jet_tile_index)
         if jet_tile_index[ijet] == 0
-            msg *= "Error: Jet $ijet is not associated with a tile"
+            msg *= "Error: Jet $ijet is not associated with a tile\n"
         end
     end
     msg
@@ -182,8 +180,8 @@ function find_all_tiled_nearest_neighbours!(tiles::Array{Tile, 2}, flatjets::Fla
     for itile in eachindex(tiles)
         itile_cartesian = get_tile_cartesian_indices(tiling_setup, itile)
         ## Debug for checking that my index calculations are correct
-        # @assert itile_cartesian[1] == tiling_setup._tile_cartesian_indexes[itile][1] "$itile_cartesian -- $(tiling_setup._tile_cartesian_indexes[itile])"
-        # @assert itile_cartesian[2] == tiling_setup._tile_cartesian_indexes[itile][2] "$itile_cartesian -- $(tiling_setup._tile_cartesian_indexes[itile])"
+        @assert itile_cartesian[1] == tiling_setup._tile_cartesian_indexes[itile][1] "$itile_cartesian -- $(tiling_setup._tile_cartesian_indexes[itile])"
+        @assert itile_cartesian[2] == tiling_setup._tile_cartesian_indexes[itile][2] "$itile_cartesian -- $(tiling_setup._tile_cartesian_indexes[itile])"
 
         # Take a Vector here, because we only iterate over the upper triangle of combinations
         # So it should be worth the cost of having an ordered collection
@@ -213,7 +211,7 @@ function find_all_tiled_nearest_neighbours!(tiles::Array{Tile, 2}, flatjets::Fla
             for jtile_cartesian in rightmost_tiles(tiling_setup._n_tiles_eta, tiling_setup._n_tiles_phi, itile_cartesian[1], itile_cartesian[2])
                 jtile = get_tile_linear_index(tiling_setup, jtile_cartesian[1], jtile_cartesian[2])
                 ## Debug for checking that my index calculations are correct
-                # @assert jtile == tiling_setup._tile_linear_indexes[jtile_cartesian[1], jtile_cartesian[2]]
+                @assert jtile == tiling_setup._tile_linear_indexes[jtile_cartesian[1], jtile_cartesian[2]]
                 for jjet in tiles[jtile].jets
                     nn_dist = geometric_distance(eta(flatjets, ijet), phi(flatjets, ijet),
                         eta(flatjets, jjet), phi(flatjets, jjet))
@@ -230,7 +228,7 @@ function find_all_tiled_nearest_neighbours!(tiles::Array{Tile, 2}, flatjets::Fla
         end
     end
     # Done with nearest neighbours, now calculate dij_distances
-    for ijet in 1:size(flatjets.kt2)[1]
+    for ijet in 1:length(flatjets.kt2)
         set_dij_distance!(flatjets, ijet, 
             get_dij_dist(
                 nn_distance(flatjets, ijet), 
@@ -246,13 +244,13 @@ end
 """
 Find neighbour for a particular jet index
 """
+const updated_pair_jets = Int[] # If any reverese mappings change their NN distance, need to record this to update dij
 function find_jet_nearest_neighbour!(tiles::Array{Tile, 2}, flatjets::FlatJets, tiling_setup::TilingDef, ijet::Int, R2)
     @debug "Finding neighbours of $ijet"
     set_nearest_neighbour!(flatjets, ijet, 0)
     set_nn_distance!(flatjets, ijet, R2)
-    updated_pair_jets = Int[] # If any reverese mappings change their NN distance, 
-                              # need to record this to update dij
-    # Jets in own tile
+    empty!(updated_pair_jets)
+    # Jet's in own tile
     itile_cartesian = get_tile_cartesian_indices(tiling_setup, tile_index(flatjets, ijet))
     for jjet in tiles[tile_index(flatjets, ijet)].jets
         if ijet == jjet
@@ -309,7 +307,7 @@ end
 """
 Find all of the jets with a particular nearest neighbour
 """
-neighbours = Vector{Int}()
+const neighbours = Vector{Int}()
 find_neighbours_of(flatjets::FlatJets, innv::Vector{Int}) = begin
     empty!(neighbours)
     @inbounds for (ijet, nn) in enumerate(flatjets.nearest_neighbour)
@@ -433,11 +431,11 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 		tiles[itile] = Tile()
 	end
 
-    # Populate tile linked lists, from the initial particles
+    # Populate tile jet lists, from the initial particles
 	populate_tile_lists!(tiles, flatjets, tiling_setup)
 
     # Useful state debugging
-    # print(debug_tiles(tiles, flatjets))
+    print(debug_tiles(tiles, flatjets))
 
 	# Setup initial nn, nndist and dij values
 	find_all_tiled_nearest_neighbours!(tiles, flatjets, tiling_setup, R2)
@@ -459,11 +457,12 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
         dij_dist = 1.0e9
         for (ijet, dist) in enumerate(flatjets.dij_distance)
             if dist < dij_dist
+                dij_dist = dist
                 iclosejetA = ijet
             end
         end
         iclosejetB = nearest_neighbour(flatjets, iclosejetA)
-        @debug "Closest jets $iclosejetA, $iclosejetB: $(kt2(flatjets, iclosejetA))"
+        @debug "Closest jets $iclosejetA, $iclosejetB: $(dij_distance(flatjets, iclosejetA))"
 
         # Finalise jet or merge jets?
         if iclosejetB != 0
@@ -475,7 +474,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
             if iclosejetA < iclosejetB
                 iclosejetA, iclosejetB = iclosejetB, iclosejetA
             end
-            @debug "Merge jets: jet indexes $(jet_index(flatjets, iclosejetA)), $(jet_index(flatjets, iclosejetB))"
+            @debug "Merge jets: jet indexes $(jet_index(flatjets, iclosejetA)) in $(get_tile_cartesian_indices(tiling_setup, tile_index(flatjets, iclosejetA))), $(jet_index(flatjets, iclosejetB)) in $(get_tile_cartesian_indices(tiling_setup, tile_index(flatjets, iclosejetB)))"
             newjet = recombine(jet_objects[jet_index(flatjets, iclosejetA)], 
                                jet_objects[jet_index(flatjets, iclosejetB)])
             push!(jet_objects, newjet)
@@ -537,7 +536,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
             if shuffled_jet != 0
                 delete!(tiles[tile_index(flatjets, iclosejetA)].jets, shuffled_jet)
                 push!(tiles[tile_index(flatjets, iclosejetA)].jets, iclosejetA)
-                move_nn_index!(tiles, flatjets, tiling_setup, shuffled_jet, iclosejetA)
+                move_nn_index!(flatjets, shuffled_jet, iclosejetA)
                 if shuffled_jet in itouched_jets
                     delete!(itouched_jets, shuffled_jet)
                     push!(itouched_jets, iclosejetA)
