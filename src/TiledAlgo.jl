@@ -178,7 +178,7 @@ Complete scan over all tiles to setup the nearest neighbour mappings at the begi
 function find_all_tiled_nearest_neighbours!(tiles::Array{Tile, 2}, flatjets::FlatJets, tiling_setup::TilingDef, R2)
     # Iterate tile by tile...
     # tile_jet_list = Vector{Int}()
-    for itile in eachindex(tiles)
+    for itile ∈ eachindex(tiles)
         itile_cartesian = get_tile_cartesian_indices(tiling_setup, itile)
         ## Debug for checking that my index calculations are correct
         # @assert itile_cartesian[1] == tiling_setup._tile_cartesian_indexes[itile][1] "$itile_cartesian -- $(tiling_setup._tile_cartesian_indexes[itile])"
@@ -349,34 +349,12 @@ Look for any jets which had a shuffled jet as their nearest neighbour, which has
 moved from old_index to new_index
 """
 function move_nn_index!(flatjets::FlatJets, old_index, new_index)
-    # Do this in a simple loop, as it's contiguous memory this will be very fast
+    # Do this in a simple loop - it's contiguous memory, very fast and can be vectorised
     @debug "Moving jet $old_index to $new_index"
-    for (ijet, nn) in enumerate(flatjets.nearest_neighbour)
-        if nn == old_index
-            set_nearest_neighbour!(flatjets, ijet, new_index)
-            @debug "Set NN for jet $ijet to $new_index"
-        end
+    @turbo for ijet ∈ eachindex(flatjets.nearest_neighbour)
+        moveme = flatjets.nearest_neighbour[ijet] == old_index
+        flatjets.nearest_neighbour[ijet] = moveme ? new_index : flatjets.nearest_neighbour[ijet]
     end
-
-    ## There is also a logic error in the code below 😮
-    # for ijet in tiles[tile_index(flatjets, new_index)].jets
-    #     if nearest_neighbour(flatjets, ijet) == old_index
-    #         @debug "Updated jet NN $ijet from $old_index to $new_index"
-    #         set_nearest_neighbour!(flatjets, ijet, new_index)
-    #     end
-    # end
-    # # Jets in neighbouring tiles
-    # itile_cartesian = get_tile_cartesian_indices(tiling_setup, new_index)
-    # for jtile_cartesian in neighbour_tiles(tiling_setup._n_tiles_eta, tiling_setup._n_tiles_phi, itile_cartesian[1], itile_cartesian[2])
-    #     # println("Neighbour Tile ($(jtile_cartesian[1]), $(jtile_cartesian[2]))")
-    #     jtile = get_tile_linear_index(tiling_setup, jtile_cartesian[1], jtile_cartesian[2])
-    #     for jjet in tiles[jtile].jets
-    #         if nearest_neighbour(flatjets, jjet) == old_index
-    #             @debug "Updated jet NN $jjet from $old_index to $new_index"
-    #             set_nearest_neighbour!(flatjets, jjet, new_index)
-    #         end
-    #     end
-    # end
 end
 
 """
