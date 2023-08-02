@@ -1,6 +1,7 @@
 # Tiled jet reconstruction, linked list data structure approach
 
 using Logging
+using LoopVectorization
 
 """
 Structure holding the flat jets for a tiled reconstruction
@@ -180,8 +181,8 @@ function find_all_tiled_nearest_neighbours!(tiles::Array{Tile, 2}, flatjets::Fla
     for itile in eachindex(tiles)
         itile_cartesian = get_tile_cartesian_indices(tiling_setup, itile)
         ## Debug for checking that my index calculations are correct
-        @assert itile_cartesian[1] == tiling_setup._tile_cartesian_indexes[itile][1] "$itile_cartesian -- $(tiling_setup._tile_cartesian_indexes[itile])"
-        @assert itile_cartesian[2] == tiling_setup._tile_cartesian_indexes[itile][2] "$itile_cartesian -- $(tiling_setup._tile_cartesian_indexes[itile])"
+        # @assert itile_cartesian[1] == tiling_setup._tile_cartesian_indexes[itile][1] "$itile_cartesian -- $(tiling_setup._tile_cartesian_indexes[itile])"
+        # @assert itile_cartesian[2] == tiling_setup._tile_cartesian_indexes[itile][2] "$itile_cartesian -- $(tiling_setup._tile_cartesian_indexes[itile])"
 
         # Take a Vector here, because we only iterate over the upper triangle of combinations
         # So it should be worth the cost of having an ordered collection
@@ -211,7 +212,7 @@ function find_all_tiled_nearest_neighbours!(tiles::Array{Tile, 2}, flatjets::Fla
             for jtile_cartesian in rightmost_tiles(tiling_setup._n_tiles_eta, tiling_setup._n_tiles_phi, itile_cartesian[1], itile_cartesian[2])
                 jtile = get_tile_linear_index(tiling_setup, jtile_cartesian[1], jtile_cartesian[2])
                 ## Debug for checking that my index calculations are correct
-                @assert jtile == tiling_setup._tile_linear_indexes[jtile_cartesian[1], jtile_cartesian[2]]
+                # @assert jtile == tiling_setup._tile_linear_indexes[jtile_cartesian[1], jtile_cartesian[2]]
                 for jjet in tiles[jtile].jets
                     nn_dist = geometric_distance(eta(flatjets, ijet), phi(flatjets, ijet),
                         eta(flatjets, jjet), phi(flatjets, jjet))
@@ -379,6 +380,20 @@ function move_nn_index!(flatjets::FlatJets, old_index, new_index)
 end
 
 """
+Find the index in the vector which has the lowest value of dij
+"""
+function find_lowest_dij_index(dij_distances)
+    imin = 0
+    vmin = typemax(typeof(dij_distances[1]))
+    @turbo for i ∈ eachindex(dij_distances)
+        newmin = dij_distances[i] < vmin
+        vmin = newmin ? dij_distances[i] : vmin
+        imin = newmin ? i : imin
+    end
+    imin
+end
+
+"""
 Tiled jet reconstruction
 """
 function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recombine = +) where T
@@ -435,7 +450,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	populate_tile_lists!(tiles, flatjets, tiling_setup)
 
     # Useful state debugging
-    print(debug_tiles(tiles, flatjets))
+    # print(debug_tiles(tiles, flatjets))
 
 	# Setup initial nn, nndist and dij values
 	find_all_tiled_nearest_neighbours!(tiles, flatjets, tiling_setup, R2)
@@ -451,16 +466,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 	for iteration in 1:N
         @debug "Iteration $(iteration) - Active Jets $(lastindex(flatjets.kt2))"
 
-        # Find the lowest value of dij_distance
-        # iclosejetA = argmin(flatjets.dij_distance)
-        iclosejetA = 0
-        dij_dist = 1.0e9
-        for (ijet, dist) in enumerate(flatjets.dij_distance)
-            if dist < dij_dist
-                dij_dist = dist
-                iclosejetA = ijet
-            end
-        end
+        iclosejetA = find_lowest_dij_index(flatjets.dij_distance)
         iclosejetB = nearest_neighbour(flatjets, iclosejetA)
         @debug "Closest jets $iclosejetA, $iclosejetB: $(dij_distance(flatjets, iclosejetA))"
 

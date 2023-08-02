@@ -269,6 +269,9 @@ end
 # The issue is that running through the debugger in VS Code actually has
 # ARGS[0] = "/some/path/.vscode/extensions/julialang.language-julia-1.47.2/scripts/debugger/run_debugger.jl",
 # so then the program does nothing at all if it only tests for abspath(PROGRAM_FILE) == @__FILE__
-if (abspath(PROGRAM_FILE) == @__FILE__) || (basename(PROGRAM_FILE) == "run_debugger.jl")
+# In addition, deep debugging with Infiltrator needs to start in an interactive session
+#
+# (Really, one starts to wonder if main() should be executed unconditionally!)
+if (abspath(PROGRAM_FILE) == @__FILE__) || (basename(PROGRAM_FILE) == "run_debugger.jl" || isinteractive())
 	main()
 end
