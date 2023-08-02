@@ -173,6 +173,15 @@ function debug_tiles(tiles::Array{Tile, 2}, flatjets::FlatJets)
 end
 
 """
+Debug jet state
+"""
+function debug_jets(flatjets::FlatJets)
+    for ijet ∈ eachindex(flatjets.dij_distance)
+        println("$ijet: $(nearest_neighbour(flatjets, ijet)); $(nn_distance(flatjets, ijet)); $(dij_distance(flatjets, ijet))")
+    end
+end
+
+"""
 Complete scan over all tiles to setup the nearest neighbour mappings at the beginning
 """
 function find_all_tiled_nearest_neighbours!(tiles::Array{Tile, 2}, flatjets::FlatJets, tiling_setup::TilingDef, R2)
@@ -316,21 +325,6 @@ find_neighbours_of(flatjets::FlatJets, innv::Vector{Int}) = begin
             push!(neighbours, ijet)
         end
     end
-    # # Jets in the same tile
-    # for ijet in tiles[tile_index(flatjets, inn)].jets
-    #     if nearest_neighbour(flatjets, ijet) == inn
-    #         push!(neighbours, ijet)
-    #     end
-    # end
-    # # Jets in neighbouring tiles
-    # itile_cartesian = get_tile_cartesian_indices(tiling_setup, inn)
-    # for jtile_cartesian in neighbour_tiles(tiling_setup._n_tiles_eta, tiling_setup._n_tiles_phi, itile_cartesian[1], itile_cartesian[2])
-    #     for jjet in tiles[jtile_cartesian[1], jtile_cartesian[2]].jets
-    #         if nearest_neighbour(flatjets, jjet) == inn
-    #             push!(neighbours, jjet)
-    #         end
-    #     end
-    # end
     neighbours
 end
 
@@ -402,7 +396,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
 
     # Nearest neighbour parameters
     _nearest_neighbour = zeros(Int, N)
-    _nn_distance = fill(1.0e9, N)
+    _nn_distance = fill(R2, N)
     _dij_distance = fill(1.0e9, N)
 
 	# returned values
@@ -447,6 +441,11 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
         iclosejetA = find_lowest_dij_index(flatjets.dij_distance)
         iclosejetB = nearest_neighbour(flatjets, iclosejetA)
         @debug "Closest jets $iclosejetA, $iclosejetB: $(dij_distance(flatjets, iclosejetA))"
+
+        ## Needed for certain tricky debugging situations
+        # if iteration==1
+        #     debug_jets(flatjets)
+        # end
 
         # Finalise jet or merge jets?
         if iclosejetB != 0
