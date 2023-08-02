@@ -318,10 +318,10 @@ end
 Find all of the jets with a particular nearest neighbour
 """
 const neighbours = Vector{Int}()
-find_neighbours_of(flatjets::FlatJets, innv::Vector{Int}) = begin
+find_neighbours_of(flatjets::FlatJets, innA::Int, innB::Int) = begin
     empty!(neighbours)
     @inbounds for (ijet, nn) in enumerate(flatjets.nearest_neighbour)
-        if (nn in innv) && !(ijet in innv)
+        if ((nn == innA) || (nn == innB)) && ((ijet != innA) && (ijet != innB))
             push!(neighbours, ijet)
         end
     end
@@ -472,7 +472,7 @@ function tiled_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, recom
             # Now find out which jets had A or B as their nearest neighbour - they will 
             # need to be rescanned
             empty!(itouched_jets)
-            union!(itouched_jets, find_neighbours_of(flatjets, [iclosejetA, iclosejetB]))
+            union!(itouched_jets, find_neighbours_of(flatjets, iclosejetA, iclosejetB))
             @debug "Jets to update from A/B neighbours: $(itouched_jets)"
             ####
             # Now push the newjet into jetB's slot, add it to its tile's jet list and to
