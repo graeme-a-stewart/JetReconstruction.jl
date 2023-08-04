@@ -115,6 +115,7 @@ end
 Delete a jet from a tile's linked list
 """
 function delete_from_tile!(tiles, itile, flatjets::FlatJets, ijet::Int)
+    # Are we the first jet for this tile?
     if tiles[itile] == ijet
         tiles[itile] = next_jet(flatjets, ijet)
         if tiles[itile] != 0
@@ -122,18 +123,11 @@ function delete_from_tile!(tiles, itile, flatjets::FlatJets, ijet::Int)
         end
         return
     end
-    current_jet = tiles[itile]
-    while current_jet != 0
-        if next_jet(flatjets, current_jet) == ijet
-            set_next_jet!(flatjets, current_jet, next_jet(flatjets, ijet))
-            if next_jet(flatjets, current_jet) != 0
-                set_prev_jet!(flatjets, next_jet(flatjets, current_jet), current_jet)
-            end
-            return
-        end
-        current_jet = next_jet(flatjets, current_jet)
+    # If not, then join our prev ⇄ next
+    if next_jet(flatjets, ijet) != 0
+        set_prev_jet!(flatjets, next_jet(flatjets, ijet), prev_jet(flatjets, ijet))
     end
-    throw(BoundsError(ijet, "Not found in tile linked list")) 
+    set_next_jet!(flatjets, prev_jet(flatjets, ijet), next_jet(flatjets, ijet))
 end
 
 """
