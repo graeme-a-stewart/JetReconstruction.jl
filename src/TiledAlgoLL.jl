@@ -323,8 +323,8 @@ tiledjet_set_jetinfo!(jet::TiledJet, cs::ClusterSequence, jets_index, R2) = begi
 end
 
 """Full scan for nearest neighbours"""
-function set_nearest_neighbours!(cs::ClusterSequence)
-    # set up the initial nearest neighbour information
+function set_nearest_neighbours!(cs::ClusterSequence, tiledjets::Vector{TiledJet})
+    # Setup the initial nearest neighbour information
     for tile in cs.tiling.tiles
         isvalid(tile) || continue
         for jetA in tile
@@ -339,10 +339,10 @@ function set_nearest_neighbours!(cs::ClusterSequence)
                     jetB.NN_dist = dist
                     jetB.NN = jetA
                 end
-            end #next jetB
-        end #next jetA
+            end
+        end
 
-        # look for neighbour jets n the neighbour tiles
+        # Look for neighbour jets n the neighbour tiles
         for rtile_index in rightneighbours(tile.tile_index, cs.tiling)
             for jetA in tile
                 for jetB in @inbounds cs.tiling.tiles[rtile_index]
@@ -356,11 +356,25 @@ function set_nearest_neighbours!(cs::ClusterSequence)
                         jetB.NN = jetA
                     end
                 end
-            end #next jetA
-            #    no need to do it for LH tiles, since they are implicitly done
-            #    when we set NN for both jetA and jetB on the RH tiles.
-        end   #next rtile
-    end #next tile
+            end
+            # No need to do it for LH tiles, since they are implicitly done
+            # when we set NN for both jetA and jetB on the RH tiles.
+        end
+    end
+
+    # Now create the diJ (where J is i's NN) table - remember that
+    # we differ from standard normalisation here by a factor of R2
+    # (corrected for at the end).
+    diJ = similar(cs.jets, Float64)
+    NNs = similar(cs.jets, TiledJet)
+    for i in eachindex(diJ)
+        jetA = tiledjets[i]
+        diJ[i] = _tj_diJ(jetA) # kt distance * R^2
+        # our compact diJ table will not be in one-to-one corresp. with non-compact jets,
+        # so set up bi-directional correspondence here.
+        @inbounds NNs[i] = jetA  
+        jetA.diJ_posn = i
+    end
 end
 
 """
@@ -406,7 +420,7 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
     end
 
     # Now initalise all of the nearest neighbour tiles
-    set_nearest_neighbours!(clusterseq)
+    set_nearest_neighbours!(clusterseq, tiledjets)
 
     # Implement me please...
     return T[], T[]
