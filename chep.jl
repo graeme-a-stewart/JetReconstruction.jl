@@ -79,6 +79,8 @@ function jet_process(
 		jet_reconstruction = tiled_jet_reconstruct_soa_global
 	elseif (strategy == N2TiledSoATile)
 		jet_reconstruction = tiled_jet_reconstruct_soa_tile
+	elseif (strategy == N2TiledLL)
+		jet_reconstruction = tiled_jet_reconstruct_ll
 	else
 		throw(ErrorException("Strategy not yet implemented"))
 	end
