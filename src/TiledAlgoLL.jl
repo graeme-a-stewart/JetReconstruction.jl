@@ -213,18 +213,60 @@ add_step_to_history!(clusterseq::ClusterSequence, parent1, parent2, jetp_index, 
     end
 end
 
+"""Adds to the vector tile_union the tiles that are in the neighbourhood
+of the specified tile_index, including itself and whose tagged status are
+false ---start adding from position n_near_tiles-1, and increase n_near_tiles as
+you go along. When a neighbour is added its tagged status is set to true.
+
+Returns the updated number of near_tiles."""
+function add_untagged_neighbours_to_tile_union(center_index,
+                                                tile_union, n_near_tiles,
+                                                tiling)
+    for tile_index in surrounding(center_index, tiling)
+        @inbounds if !tiling.tags[tile_index]
+            n_near_tiles += 1
+            tile_union[n_near_tiles] = tile_index
+            tiling.tags[tile_index] = true
+        else
+        end
+    end
+    n_near_tiles
+end
+
+"""
+Establish the set of tiles over which we are going to
+have to run searches for updated and new nearest-neighbours --
+basically a combination of vicinity of the tiles of the two old
+jets and the new jet.
+
+Updates tile_union and returns n_near_tiles
+"""
+function find_tile_neighbours!(tile_union, jetA, jetB, oldB, tiling)
+    n_near_tiles = add_untagged_neighbours_to_tile_union(jetA.tile_index,
+                                                            tile_union, 0, tiling)
+    if isvalid(jetB)
+        if jetB.tile_index != jetA.tile_index
+            n_near_tiles = add_untagged_neighbours_to_tile_union(jetB.tile_index,
+                                                                    tile_union, n_near_tiles, tiling)
+        end
+        if oldB.tile_index != jetA.tile_index && oldB.tile_index != jetB.tile_index
+            n_near_tiles = add_untagged_neighbours_to_tile_union(oldB.tile_index,
+                                                                    tile_union, n_near_tiles, tiling)
+        end
+    end
+end
 
 """Find the lowest value in the array, returning the value and the index"""
-find_lowest(diJ, n) = begin
+find_lowest(dij, n) = begin
     best = 1
-    @inbounds diJ_min = diJ[1]
+    @inbounds dij_min = dij[1]
     @turbo for here in 2:n
-        newmin = diJ[here] < diJ_min
+        newmin = dij[here] < dij_min
         best = newmin ? here : best
-        diJ_min = newmin ? diJ[here] : diJ_min
+        dij_min = newmin ? dij[here] : dij_min
     end
-    # @assert argmin(diJ[1:n]) == best
-    diJ_min, best
+    # @assert argmin(dij[1:n]) == best
+    dij_min, best
 end
 
 """
@@ -239,6 +281,10 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
 	R2::Float64 = R * R
     invR2::Float64 = 1/R2
 	p = (round(p) == p) ? Int(p) : p # integer p if possible
+
+    # This will be used quite deep inside loops, but declare it here so that
+    # memory (de)allocation gets done only once
+    tile_union = Vector{Int}(undef, 3*_n_tile_neighbours)
 
     # Container for pseudojets, sized for all initial particles, plus all of the
     # merged jets that can be created during reconstruction
@@ -277,8 +323,11 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
     # to complete the reconstruction
 
     for iteration in 1:N
+        # Last slot holds the index of the final valid entry in the
+        # compact NNs and dij arrays
+        ilast = N - (iteration-1)
         # Search for the lowest value of min_dij_ijet
-        dij_min, ibest = find_lowest(dij, N - (iteration-1))
+        dij_min, ibest = find_lowest(dij, ilast)
         next_history_location = length(clusterseq.jets)+1
         @inbounds jetA = NNs[ibest]
         jetB = jetA.NN
@@ -311,6 +360,15 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
             do_iB_recombination_step!(clusterseq, jetA.jets_index, dij_min)
             tiledjet_remove_from_tiles!(clusterseq.tiling, jetA)
         end
+
+        # Find all the neighbour tiles that hold candidate jets for Updates
+        n_near_tiles = find_tile_neighbours!(tile_union, jetA, jetB, oldB, clusterseq.tiling)
+
+        # Firstly compactify the diJ by taking the last of the diJ and copying
+        # it to the position occupied by the diJ for jetA
+        @inbounds NNs[ilast].diJ_posn = jetA.diJ_posn
+        @inbounds dij[jetA.diJ_posn] = dij[ilast]
+        @inbounds NNs[jetA.diJ_posn] = NNs[ilast]
 
         exit(0)
 
