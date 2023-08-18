@@ -2,51 +2,10 @@
 # This is very similar to FastJet's N2Tiled algorithm
 
 using Logging
+using Accessors
 
-# TODO: Consider ENUM here, rather than magic numbers
-const Invalid=-3
-const NonexistentParent=-2
-const BeamJet=-1
-
-"""A struct holding a record of jet mergers and finalisations"""
-struct HistoryElement
-    """Index in _history where first parent of this jet
-    was created (NonexistentParent if this jet is an
-    original particle)"""
-    parent1::Int
-
-    """index in _history where second parent of this jet
-    was created (NonexistentParent if this jet is an
-    original particle); BeamJet if this history entry
-    just labels the fact that the jet has recombined
-    with the beam)"""
-    parent2::Int
-
-    """index in _history where the current jet is
-    recombined with another jet to form its child. It
-    is Invalid if this jet does not further
-    recombine."""
-    child::Int
-
-    """index in the _jets vector where we will find the
-    PseudoJet object corresponding to this jet
-    (i.e. the jet created at this entry of the
-    history). NB: if this element of the history
-    corresponds to a beam recombination, then
-    jetp_index=Invalid."""
-    jetp_index::Int
-
-    """the distance corresponding to the recombination
-       at this stage of the clustering."""
-    dij::Float64
-
-    """the largest recombination distance seen
-       so far in the clustering history."""
-    max_dij_so_far::Float64
-end
-
-"""Used for initial particles"""
-HistoryElement(jetp_index) = HistoryElement(NonexistentParent, NonexistentParent, Invalid, jetp_index, 0.0, 0.0)
+# Include struct definitions and basic operations
+include("TiledAlglLLStructs.jl")
 
 """
 Initialise the clustering history in a standard way,
@@ -72,80 +31,6 @@ function initial_history(particles)
     history, Qtot
 end
 
-"""Structure analogous to BriefJet, but with the extra information
-needed for dealing with tiles"""
-mutable struct TiledJet
-    id::Int
-    eta::Float64
-    phi::Float64
-    kt2::Float64
-    NN_dist::Float64
-
-    jets_index::Int
-    tile_index::Int
-    diJ_posn::Int
-
-
-    "Nearest neighbour"
-    NN::TiledJet
-
-    previous::TiledJet
-    next::TiledJet
-    TiledJet(::Type{Nothing}) = begin
-        t = new(-1, 0., 0., 0., 0., -1, 0, 0)
-        t.NN = t.previous = t.next = t
-        t
-    end
-    
-    TiledJet(id, eta, phi, kt2, NN_dist,
-             jet_index, tile_index, diJ_posn,
-             NN, previous, next) = new(id, eta, phi, kt2, NN_dist,
-                                       jet_index, tile_index, diJ_posn,
-                                       NN, previous, next)
-end
-
-
-const noTiledJet::TiledJet = TiledJet(Nothing)
-
-isvalid(t::TiledJet) = !(t === noTiledJet)
-
-"""
-Move a TiledJet in front of a TiledJet list element
-The jet to move can be an isolated jet, a jet from another list or a jet from the same list
-"""
-insert!(nextjet::TiledJet, jettomove::TiledJet) = begin
-    if !isnothing(nextjet)
-        nextjet.previous  = jettomove
-    end
-
-    jettomove.next = nextjet
-    jettomove.previous = nextjet.previous
-    nextjet = jettomove
-end
-
-"""Detach a TiledJet from its list"""
-detach!(jet::TiledJet) = begin
-    if !isnothing(jet.previous)
-        jet.previous.next = jet.next
-    end
-    if !isnothing(jet.next)
-        jet.next.previous = jet.previous
-    end
-    jet.next = jet.previous = noTiledJet
-end
-
-TiledJet(id) = TiledJet(id, 0., 0., 0., 0.,
-                        0, 0, 0,
-                        noTiledJet, noTiledJet, noTiledJet)
-
-import Base.copy
-copy(j::TiledJet) = TiledJet(j.id, j.eta, j.phi, j.kt2, j.NN_dist, j.jets_index, j.tile_index, j.diJ_posn, j.NN, j.previous, j.next)
-
-Base.iterate(tj::TiledJet) = (tj, tj)
-Base.iterate(tj::TiledJet, state::TiledJet) = begin
-    isvalid(state.next) ? (state.next::TiledJet, state.next::TiledJet) : nothing
-end
-
 """Computes distance in the (eta,phi)-plane
 between two jets."""
 _tj_dist(jetA, jetB) = begin
@@ -162,100 +47,6 @@ _tj_diJ(jet) = begin
     return jet.NN_dist * kt2
 end
 
-"""
-Structure with the tiling parameters, as well as some bookkeeping
-variables used during reconstruction
-"""
-struct Tiling
-    setup::TilingDef
-    tiles::Matrix{TiledJet}
-    positions::Matrix{Int}
-    tags::Matrix{Bool}
-end
-
-const tile_left = -1
-const tile_central = 0
-const tile_right = 1
-
-const _n_tile_center = 1
-const _n_tile_left_neighbours = 4
-const _tile_right_neigbour_indices = 6:9
-const _n_tile_right_neighbours = 4
-const _n_tile_neighbours = 9
-
-const neigh_init = fill(nothing, _n_tile_neighbours)
-
-struct Surrounding{N}
-    indices::NTuple{N, Int}
-end
-
-import Base.iterate
-
-Base.iterate(x::T) where {T<:Surrounding} = (x.indices[1], 2)
-Base.iterate(x::Surrounding{0}) = nothing
-Base.iterate(x::Surrounding{1}, state) = nothing
-Base.iterate(x::Surrounding{2}, state) = nothing
-Base.iterate(x::Surrounding{3}, state) = state > 3 ? nothing : (x.indices[state], state+1)
-Base.iterate(x::Surrounding{4}, state) = state > 4 ? nothing : (x.indices[state], state+1)
-Base.iterate(x::Surrounding{6}, state) = state > 6 ? nothing : (x.indices[state], state+1)
-Base.iterate(x::Surrounding{9}, state) = state > 9 ? nothing : (x.indices[state], state+1)
-
-import Base.length
-length(x::Surrounding{N}) where N = N
-
-surrounding(center::Int, tiling::Tiling) = begin
-    #                        4|6|9
-    #                        3|1|8
-    #                        2|5|7
-    #  -> η
-
-    iphip = mod1(center + tiling.setup._n_tiles_eta, tiling.setup._n_tiles)
-    iphim = mod1(center - tiling.setup._n_tiles_eta, tiling.setup._n_tiles)
-
-    if tiling.setup._n_tiles_eta == 1
-        return Surrounding{3}((center, iphim, iphip))
-    elseif tiling.positions[center] == tile_right
-        return Surrounding{6}((center, iphim, iphip, iphim - 1, center - 1, iphip - 1))
-    elseif tiling.positions[center] == tile_central
-        return Surrounding{9}((center, iphim - 1, center - 1, iphip - 1,
-                               iphim, iphip,
-                               iphim + 1, center + 1, iphip + 1))
-    else #tile_left
-        return Surrounding{6}((center, iphim, iphip,
-                               iphim + 1, center + 1, iphip + 1))
-    end
-end
-
-rightneighbours(center::Int, tiling::Tiling) = begin
-    #                         |1|4
-    #                         | |3
-    #                         | |2
-    #  -> η
-
-    iphip = mod1(center + tiling.setup._n_tiles_eta, tiling.setup._n_tiles)
-    iphim = mod1(center - tiling.setup._n_tiles_eta, tiling.setup._n_tiles)
-
-    if tiling.positions[center] == tile_right
-        return Surrounding{1}((iphip,))
-    else
-        return Surrounding{4}((iphip, iphim + 1, center + 1, iphip + 1))
-    end
-end
-
-"""Return a tiling setup with bookkeeping"""
-Tiling(setup::TilingDef) = begin
-    t = Tiling(setup,
-               fill(noTiledJet, (setup._n_tiles_eta, setup._n_tiles_phi)),
-               fill(0, (setup._n_tiles_eta, setup._n_tiles_phi)),
-               fill(false, (setup._n_tiles_eta, setup._n_tiles_phi)))
-    @inbounds for iphi = 1:setup._n_tiles_phi
-        # The order of the following two statements is important
-        # to have position = tile_right in case n_tiles_eta = 1
-        t.positions[1, iphi] = tile_left
-        t.positions[setup._n_tiles_eta, iphi] = tile_right
-    end
-    t
-end
 
 """Return the tile index corresponding to the given eta,phi point"""
 tile_index(tiling_setup, eta::Float64, phi::Float64) = begin
@@ -274,58 +65,33 @@ tile_index(tiling_setup, eta::Float64, phi::Float64) = begin
     return iphi * tiling_setup._n_tiles_eta + ieta
 end
 
-"""
-Convienence structure holding all of the relevant parameters for
-the jet reconstruction
-"""
-struct ClusterSequence
-    """
-    This contains the physical PseudoJets; for each PseudoJet one can find
-    the corresponding position in the _history by looking at
-    _jets[i].cluster_hist_index()
-    """
-    jets::Vector{PseudoJet}
-
-    """
-    This vector will contain the branching history; for each stage,
-    history[i].jetp_index indicates where to look in the _jets
-    vector to get the physical PseudoJet.
-    """
-    history::Vector{HistoryElement}
-
-    """PseudoJet tiling"""
-    tiling::Tiling
-
-    """Total energy of the event"""
-    Qtot
-end
-
 
 """Initialise a tiled jet from a PseudoJet (using an index into our ClusterSequence)"""
-tiledjet_set_jetinfo!(jet::TiledJet, cs::ClusterSequence, jets_index, R2) = begin
-    @inbounds jet.eta  = rap(cs.jets[jets_index])
-    @inbounds jet.phi  = phi_02pi(cs.jets[jets_index])
-    @inbounds jet.kt2  = pt2(cs.jets[jets_index]) > 1.e-300 ? 1. / pt2(cs.jets[jets_index]) : 1.e300
+tiledjet_set_jetinfo!(jet::TiledJet, clusterseq::ClusterSequence, jets_index, R2) = begin
+    @inbounds jet.eta  = rap(clusterseq.jets[jets_index])
+    @inbounds jet.phi  = phi_02pi(clusterseq.jets[jets_index])
+    @inbounds jet.kt2  = pt2(clusterseq.jets[jets_index]) > 1.e-300 ? 1. / pt2(clusterseq.jets[jets_index]) : 1.e300
     jet.jets_index = jets_index
     # Initialise NN info as well
     jet.NN_dist = R2
     jet.NN      = noTiledJet
 
     # Find out which tile it belonds to
-    jet.tile_index = tile_index(cs.tiling.setup, jet.eta, jet.phi)
+    jet.tile_index = tile_index(clusterseq.tiling.setup, jet.eta, jet.phi)
 
     # Insert it into the tile's linked list of jets (at the beginning)
     jet.previous = noTiledJet
-    @inbounds jet.next = cs.tiling.tiles[jet.tile_index]
+    @inbounds jet.next = clusterseq.tiling.tiles[jet.tile_index]
     if isvalid(jet.next) jet.next.previous = jet; end
-    @inbounds cs.tiling.tiles[jet.tile_index] = jet
+    @inbounds clusterseq.tiling.tiles[jet.tile_index] = jet
     nothing
 end
 
+
 """Full scan for nearest neighbours"""
-function set_nearest_neighbours!(cs::ClusterSequence, tiledjets::Vector{TiledJet})
+function set_nearest_neighbours!(clusterseq::ClusterSequence, tiledjets::Vector{TiledJet})
     # Setup the initial nearest neighbour information
-    for tile in cs.tiling.tiles
+    for tile in clusterseq.tiling.tiles
         isvalid(tile) || continue
         for jetA in tile
             for jetB in tile
@@ -343,9 +109,9 @@ function set_nearest_neighbours!(cs::ClusterSequence, tiledjets::Vector{TiledJet
         end
 
         # Look for neighbour jets n the neighbour tiles
-        for rtile_index in rightneighbours(tile.tile_index, cs.tiling)
+        for rtile_index in rightneighbours(tile.tile_index, clusterseq.tiling)
             for jetA in tile
-                for jetB in @inbounds cs.tiling.tiles[rtile_index]
+                for jetB in @inbounds clusterseq.tiling.tiles[rtile_index]
                     dist = _tj_dist(jetA, jetB)
                     if (dist < jetA.NN_dist)
                         jetA.NN_dist = dist
@@ -365,8 +131,8 @@ function set_nearest_neighbours!(cs::ClusterSequence, tiledjets::Vector{TiledJet
     # Now create the diJ (where J is i's NN) table - remember that
     # we differ from standard normalisation here by a factor of R2
     # (corrected for at the end).
-    diJ = similar(cs.jets, Float64)
-    NNs = similar(cs.jets, TiledJet)
+    diJ = similar(clusterseq.jets, Float64)
+    NNs = similar(clusterseq.jets, TiledJet)
     for i in eachindex(diJ)
         jetA = tiledjets[i]
         diJ[i] = _tj_diJ(jetA) # kt distance * R^2
@@ -375,10 +141,94 @@ function set_nearest_neighbours!(cs::ClusterSequence, tiledjets::Vector{TiledJet
         @inbounds NNs[i] = jetA  
         jetA.diJ_posn = i
     end
+    NNs, diJ
+end
+
+"""Carries out the bookkeeping associated with the step of recombining
+jet_i and jet_j (assuming a distance dij) and returns the index
+of the recombined jet, newjet_k."""
+do_ij_recombination_step!(clusterseq::ClusterSequence, jet_i, jet_j, dij) = begin
+    # Create the new jet by recombining the first two with
+    # the E-scheme
+    push!(clusterseq.jets, clusterseq.jets[jet_i] + clusterseq.jets[jet_j])
+
+    # Get its index and the history index
+    newjet_k = length(clusterseq.jets)
+    newstep_k = length(clusterseq.history) + 1
+
+    # And provide jet with this info
+    clusterseq.jets[newjet_k]._cluster_hist_index = newstep_k
+
+    # Finally sort out the history
+    hist_i = clusterseq.jets[jet_i]._cluster_hist_index
+    hist_j = clusterseq.jets[jet_j]._cluster_hist_index
+
+    add_step_to_history!(clusterseq, minmax(hist_i, hist_j)...,
+                         newjet_k, dij)
+
+    newjet_k
+end
+
+"""Carries out the bookkeeping associated with the step of recombining
+jet_i with the beam (i.e., finalising the jet)"""
+do_iB_recombination_step!(clusterseq::ClusterSequence, jet_i, diB) = begin
+    # Recombine the jet with the beam
+    add_step_to_history!(clusterseq, clusterseq.jets[jet_i]._cluster_hist_index, BeamJet,
+                         Invalid, diB)
+end
+
+"""Add a new jet's history into the recombination sequence"""
+add_step_to_history!(clusterseq::ClusterSequence, parent1, parent2, jetp_index, dij) = begin
+    max_dij_so_far = max(dij, clusterseq.history[end].max_dij_so_far)
+    push!(clusterseq.history, HistoryElement(parent1, parent2, Invalid,
+                                     jetp_index, dij, max_dij_so_far))
+
+    local_step = length(clusterseq.history)
+
+    # Sanity check: make sure the particles have not already been recombined
+    #
+    # Note that good practice would make this an assert (since this is
+    # a serious internal issue). However, we decided to throw an
+    # InternalError so that the end user can decide to catch it and
+    # retry the clustering with a different strategy.
+
+    @assert parent1 >= 1
+    if clusterseq.history[parent1].child != Invalid
+        throw(ErrorException("Internal error. Trying to recombine an object that has previsously been recombined."))
+    end
+
+    hist_elem = clusterseq.history[parent1]
+    clusterseq.history[parent1] = @set hist_elem.child = local_step
+
+    if parent2 >= 1
+        clusterseq.history[parent2].child == Invalid || error("Internal error. Trying to recombine an object that has previsously been recombined.  Parent " * string(parent2) * "'s child index " * string(clusterseq.history[parent1].child) * ". Parent jet index: " * string(clusterseq.history[parent2].jetp_index) * ".")
+        hist_elem = clusterseq.history[parent2]
+        clusterseq.history[parent2] = @set hist_elem.child = local_step
+    end
+
+    # Get cross-referencing right from PseudoJets
+    if jetp_index != Invalid
+        @assert jetp_index >= 1
+        clusterseq.jets[jetp_index]._cluster_hist_index = local_step
+    end
+end
+
+
+"""Find the lowest value in the array, returning the value and the index"""
+find_lowest(diJ, n) = begin
+    best = 1
+    @inbounds diJ_min = diJ[1]
+    @turbo for here in 2:n
+        newmin = diJ[here] < diJ_min
+        best = newmin ? here : best
+        diJ_min = newmin ? diJ[here] : diJ_min
+    end
+    # @assert argmin(diJ[1:n]) == best
+    diJ_min, best
 end
 
 """
-Jet reconstruction algorithm
+Main jet reconstruction algorithm
 """
 function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, recombine = +) where T
     # Bounds
@@ -420,7 +270,51 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
     end
 
     # Now initalise all of the nearest neighbour tiles
-    set_nearest_neighbours!(clusterseq, tiledjets)
+    NNs, dij = set_nearest_neighbours!(clusterseq, tiledjets)
+
+    # Main loop of the reconstruction
+    # Each iteration we either merge 2→1 or finalise a jet, so it takes N iterations
+    # to complete the reconstruction
+
+    for iteration in 1:N
+        # Search for the lowest value of min_dij_ijet
+        dij_min, ibest = find_lowest(dij, N - (iteration-1))
+        next_history_location = length(clusterseq.jets)+1
+        @inbounds jetA = NNs[ibest]
+        jetB = jetA.NN
+
+        # Normalisation
+        dij_min *= R2
+
+        @debug "Iteration $(iteration): dij_min $(dij_min); jetA $(jetA.id), jetB $(jetB.id)"
+
+        if isvalid(jetB)
+            # Jet-jet recombination
+            # If necessary relabel A & B to ensure jetB < jetA, that way if
+            # the larger of them == newtail then that ends up being jetA and
+            # the new jet that is added as jetB is inserted in a position that
+            # has a future!
+            if jetA.id < jetB.id
+                jetA, jetB = jetB, jetA;
+            end
+
+            # Recombine jetA and jetB and retrieves the new index, nn
+            nn = do_ij_recombination_step!(clusterseq, jetA.jets_index, jetB.jets_index, dij_min)
+            tiledjet_remove_from_tiles!(clusterseq.tiling, jetA)
+            oldB = copy(jetB)  # take a copy because we will need it...
+
+            tiledjet_remove_from_tiles!(clusterseq.tiling, jetB)
+            tiledjet_set_jetinfo!(jetB, clusterseq, nn, R2) # cause jetB to become _jets[nn]
+            #                                  (in addition, registers the jet in the tiling)
+        else
+            # Jet-beam recombination
+            do_iB_recombination_step!(clusterseq, jetA.jets_index, dij_min)
+            tiledjet_remove_from_tiles!(clusterseq.tiling, jetA)
+        end
+
+        exit(0)
+
+    end
 
     # Implement me please...
     return T[], T[]
