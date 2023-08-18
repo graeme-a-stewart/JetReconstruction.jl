@@ -139,7 +139,7 @@ function set_nearest_neighbours!(clusterseq::ClusterSequence, tiledjets::Vector{
         # our compact diJ table will not be in one-to-one corresp. with non-compact jets,
         # so set up bi-directional correspondence here.
         @inbounds NNs[i] = jetA  
-        jetA.diJ_posn = i
+        jetA.dij_posn = i
     end
     NNs, diJ
 end
@@ -254,6 +254,7 @@ function find_tile_neighbours!(tile_union, jetA, jetB, oldB, tiling)
                                                                     tile_union, n_near_tiles, tiling)
         end
     end
+    n_near_tiles
 end
 
 """Find the lowest value in the array, returning the value and the index"""
@@ -269,10 +270,31 @@ find_lowest(dij, n) = begin
     dij_min, best
 end
 
+
+
+"""Return all inclusive jets of a ClusterSequence with pt > ptmin"""
+inclusive_jets(clusterseq::ClusterSequence, ptmin = 0.) = begin
+    dcut = ptmin*ptmin
+    jets_local = PseudoJet[]
+    sizehint!(jets_local, length(clusterseq.jets))
+    # For inclusive jets with a plugin algorithm, we make no
+    # assumptions about anything (relation of dij to momenta,
+    # ordering of the dij, etc.)
+    for elt in Iterators.reverse(clusterseq.history)
+        elt.parent2 == BeamJet || continue
+        iparent_jet = clusterseq.history[elt.parent1].jetp_index
+        jet = clusterseq.jets[iparent_jet]
+        if pt2(jet) >= dcut
+            push!(jets_local, jet)
+        end
+    end
+    jets_local
+end
+
 """
 Main jet reconstruction algorithm
 """
-function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, recombine = +) where T
+function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, recombine = +, ptmin = 0.0) where T
     # Bounds
 	N::Int = length(objects)
 	@debug "Initial particles: $(N)"
@@ -303,10 +325,10 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
 
     # Now get the tiling setup
     _eta = JetReconstruction.eta.(objects) # This could be avoided, probably...
-    tiling_setup = Tiling(setup_tiling(_eta, R))
+    tiling = Tiling(setup_tiling(_eta, R))
 
     # ClusterSequence is a convenience struct that holds the state of the reconstruction
-    clusterseq = ClusterSequence(jets, history, tiling_setup, Qtot)
+    clusterseq = ClusterSequence(jets, history, tiling, Qtot)
 
     # Tiled jets is a structure that has additional variables for tracking which tile a jet is in
     tiledjets = similar(clusterseq.jets, TiledJet)
@@ -359,6 +381,7 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
             # Jet-beam recombination
             do_iB_recombination_step!(clusterseq, jetA.jets_index, dij_min)
             tiledjet_remove_from_tiles!(clusterseq.tiling, jetA)
+            oldB = jetB
         end
 
         # Find all the neighbour tiles that hold candidate jets for Updates
@@ -366,14 +389,64 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
 
         # Firstly compactify the diJ by taking the last of the diJ and copying
         # it to the position occupied by the diJ for jetA
-        @inbounds NNs[ilast].diJ_posn = jetA.diJ_posn
-        @inbounds dij[jetA.diJ_posn] = dij[ilast]
-        @inbounds NNs[jetA.diJ_posn] = NNs[ilast]
+        @inbounds NNs[ilast].dij_posn = jetA.dij_posn
+        @inbounds dij[jetA.dij_posn] = dij[ilast]
+        @inbounds NNs[jetA.dij_posn] = NNs[ilast]
 
-        exit(0)
+        # Initialise jetB's NN distance as well as updating it for
+        # other particles.
+        # Run over all tiles in our union
+        for itile in 1:n_near_tiles
+            @inbounds tile = tiling.tiles[ @inbounds tile_union[itile]] #TAKES 5μs
+            @inbounds tiling.tags[tile_union[itile]] = false # reset tag, since we're done with unions
 
+            isvalid(tile) || continue #Probably not required
+
+            # run over all jets in the current tile
+            for jetI in tile
+                # see if jetI had jetA or jetB as a NN -- if so recalculate the NN
+                if jetI.NN == jetA || (jetI.NN == jetB && isvalid(jetB))
+                    jetI.NN_dist = R2
+                    jetI.NN      = noTiledJet
+
+                    # now go over tiles that are neighbours of I (include own tile)
+                    for near_tile_index in surrounding(tile.tile_index, tiling)
+                        # and then over the contents of that tile
+                        for jetJ in @inbounds tiling.tiles[near_tile_index]
+                            dist = _tj_dist(jetI, jetJ)
+                            if dist < jetI.NN_dist && jetJ != jetI
+                                jetI.NN_dist = dist
+                                jetI.NN = jetJ
+                            end
+                        end # next jetJ
+                    end # next near_tile
+                    dij[jetI.dij_posn]  = _tj_diJ(jetI) # update diJ kt-dist
+                end #jetI.NN == jetA || (jetI.NN == jetB && !isnothing(jetB))
+
+                # check whether new jetB is closer than jetI's current NN and
+                # if jetI is closer than jetB's current (evolving) nearest
+                # neighbour. Where relevant update things.
+                if isvalid(jetB)
+                    dist = _tj_dist(jetI,jetB)
+                    if dist < jetI.NN_dist
+                        if jetI != jetB
+                            jetI.NN_dist = dist
+                            jetI.NN = jetB
+                            dij[jetI.dij_posn] = _tj_diJ(jetI) # update diJ...
+                        end
+                    end
+                    if dist < jetB.NN_dist && jetI != jetB
+                        jetB.NN_dist = dist
+                        jetB.NN      = jetI
+                    end
+                end # isvalid(jetB)
+            end #next jetI
+        end #next itile
+
+        # finally, register the updated kt distance for B
+        if isvalid(jetB)
+            @inbounds dij[jetB.dij_posn] = _tj_diJ(jetB)
+        end
     end
-
-    # Implement me please...
-    return T[], T[]
+    inclusive_jets(clusterseq, ptmin)
 end

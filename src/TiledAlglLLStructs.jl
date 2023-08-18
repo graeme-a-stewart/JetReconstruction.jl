@@ -58,7 +58,7 @@ mutable struct TiledJet
 
     jets_index::Int
     tile_index::Int
-    diJ_posn::Int
+    dij_posn::Int
 
 
     "Nearest neighbour"
@@ -73,9 +73,9 @@ mutable struct TiledJet
     end
     
     TiledJet(id, eta, phi, kt2, NN_dist,
-             jet_index, tile_index, diJ_posn,
+             jet_index, tile_index, dij_posn,
              NN, previous, next) = new(id, eta, phi, kt2, NN_dist,
-                                       jet_index, tile_index, diJ_posn,
+                                       jet_index, tile_index, dij_posn,
                                        NN, previous, next)
 end
 
@@ -114,7 +114,7 @@ TiledJet(id) = TiledJet(id, 0., 0., 0., 0.,
                         noTiledJet, noTiledJet, noTiledJet)
 
 import Base.copy
-copy(j::TiledJet) = TiledJet(j.id, j.eta, j.phi, j.kt2, j.NN_dist, j.jets_index, j.tile_index, j.diJ_posn, j.NN, j.previous, j.next)
+copy(j::TiledJet) = TiledJet(j.id, j.eta, j.phi, j.kt2, j.NN_dist, j.jets_index, j.tile_index, j.dij_posn, j.NN, j.previous, j.next)
 
 Base.iterate(tj::TiledJet) = (tj, tj)
 Base.iterate(tj::TiledJet, state::TiledJet) = begin
