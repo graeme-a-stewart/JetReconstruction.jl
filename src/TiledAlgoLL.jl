@@ -272,20 +272,23 @@ end
 
 
 
-"""Return all inclusive jets of a ClusterSequence with pt > ptmin"""
+"""Return all inclusive jets of a ClusterSequence with pt > ptmin
+N.B. this implementation returns 4-vectors, not PseudoJets
+"""
 inclusive_jets(clusterseq::ClusterSequence, ptmin = 0.) = begin
     dcut = ptmin*ptmin
-    jets_local = PseudoJet[]
-    sizehint!(jets_local, length(clusterseq.jets))
+    jets_local = Vector{Vector{Float64}}(undef, 0)
+    # sizehint!(jets_local, length(clusterseq.jets))
     # For inclusive jets with a plugin algorithm, we make no
     # assumptions about anything (relation of dij to momenta,
     # ordering of the dij, etc.)
-    for elt in Iterators.reverse(clusterseq.history)
+    # for elt in Iterators.reverse(clusterseq.history)
+    for elt in clusterseq.history
         elt.parent2 == BeamJet || continue
         iparent_jet = clusterseq.history[elt.parent1].jetp_index
         jet = clusterseq.jets[iparent_jet]
         if pt2(jet) >= dcut
-            push!(jets_local, jet)
+            push!(jets_local, [jet.px, jet.py, jet.pz, jet.E])
         end
     end
     jets_local
@@ -413,6 +416,7 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
                     for near_tile_index in surrounding(tile.tile_index, tiling)
                         # and then over the contents of that tile
                         for jetJ in @inbounds tiling.tiles[near_tile_index]
+                            # Sometimes jetJ comes out as invalid...?
                             dist = _tj_dist(jetI, jetJ)
                             if dist < jetI.NN_dist && jetJ != jetI
                                 jetI.NN_dist = dist
@@ -448,5 +452,5 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
             @inbounds dij[jetB.dij_posn] = _tj_diJ(jetB)
         end
     end
-    inclusive_jets(clusterseq, ptmin)
+    inclusive_jets(clusterseq, ptmin), clusterseq.history
 end

@@ -116,7 +116,11 @@ TiledJet(id) = TiledJet(id, 0., 0., 0., 0.,
 import Base.copy
 copy(j::TiledJet) = TiledJet(j.id, j.eta, j.phi, j.kt2, j.NN_dist, j.jets_index, j.tile_index, j.dij_posn, j.NN, j.previous, j.next)
 
-Base.iterate(tj::TiledJet) = (tj, tj)
+# Iterator over a TiledJet walks along the chain of linked jets
+# until we reach a "noTiledJet" (which is !isvalid)
+Base.iterate(tj::TiledJet) = begin
+   isvalid(tj) ? (tj, tj) : nothing
+end
 Base.iterate(tj::TiledJet, state::TiledJet) = begin
     isvalid(state.next) ? (state.next::TiledJet, state.next::TiledJet) : nothing
 end
