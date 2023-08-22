@@ -62,7 +62,13 @@ function do_jet_test(strategy::JetRecoStrategy, fastjet_jets;
 
     # Now run our jet reconstruction...
     events::Vector{Vector{PseudoJet}} = read_final_state_particles("test/data/events.hepmc3")
-    event_vector = pseudojets2vectors(events)
+    # N2TiledLL likes to have PseudoJets
+	if strategy == N2TiledLL
+		event_vector = events
+	else
+		# Other algorithms currently work on 4-vectors
+		event_vector = pseudojets2vectors(events)
+	end
     jet_collection = FinalJets[]
     for (ievt, event) in enumerate(event_vector)
         finaljets, _ = jet_reconstruction(event, R=distance, p=power)
