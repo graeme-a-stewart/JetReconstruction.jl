@@ -50,8 +50,11 @@ end
 
 """Return the tile index corresponding to the given eta,phi point"""
 tile_index(tiling_setup, eta::Float64, phi::Float64) = begin
+    # Use clamp() to restrict to the correct ranges
+    # - eta can be out of range by construction (open end bins)
+    # - phi is protection against bad rounding
     ieta = clamp(1 + unsafe_trunc(Int, (eta - tiling_setup._tiles_eta_min) / tiling_setup._tile_size_eta), 1, tiling_setup._n_tiles_eta)
-    iphi = min(unsafe_trunc(Int, phi  / tiling_setup._tile_size_phi), tiling_setup._n_tiles_phi)
+    iphi = clamp(unsafe_trunc(Int, phi  / tiling_setup._tile_size_phi), 0, tiling_setup._n_tiles_phi)
     return iphi * tiling_setup._n_tiles_eta + ieta
 end
 
