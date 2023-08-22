@@ -62,7 +62,14 @@ function do_jet_test(strategy::JetRecoStrategy, fastjet_jets;
 
     # Now run our jet reconstruction...
     events::Vector{Vector{PseudoJet}} = read_final_state_particles("test/data/events.hepmc3")
-    event_vector = pseudojets2vectors(events)
+    if strategy == N2TiledLL
+		event_vector = events
+	else
+		# First, convert all events into the Vector of Vectors that Atell's
+		# code likes
+		event_vector = pseudojets2vectors(events)
+	end
+    # event_vector = pseudojets2vectors(events)
     jet_collection = FinalJets[]
     for (ievt, event) in enumerate(event_vector)
         finaljets, _ = jet_reconstruction(event, R=distance, p=power)

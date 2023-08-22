@@ -50,17 +50,7 @@ end
 
 """Return the tile index corresponding to the given eta,phi point"""
 tile_index(tiling_setup, eta::Float64, phi::Float64) = begin
-    if eta <= tiling_setup._tiles_eta_min
-        ieta = 1
-    elseif eta >= tiling_setup._tiles_eta_max
-        ieta = tiling_setup._n_tiles_eta
-    else
-        ieta = 1 + unsafe_trunc(Int, (eta - tiling_setup._tiles_eta_min) / tiling_setup._tile_size_eta)
-        # following needed in case of rare but nasty rounding errors
-        if ieta > tiling_setup._n_tiles_eta
-            ieta = tiling_setup._n_tiles_eta
-        end
-    end
+    ieta = clamp(1 + unsafe_trunc(Int, (eta - tiling_setup._tiles_eta_min) / tiling_setup._tile_size_eta), 1, tiling_setup._n_tiles_eta)
     iphi = min(unsafe_trunc(Int, phi  / tiling_setup._tile_size_phi), tiling_setup._n_tiles_phi)
     return iphi * tiling_setup._n_tiles_eta + ieta
 end
@@ -297,10 +287,10 @@ end
 """
 Main jet reconstruction algorithm
 """
-function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, recombine = +, ptmin = 0.0) where T
+function tiled_jet_reconstruct_ll(particles::Vector{PseudoJet}; p = -1, R = 1.0, recombine = +, ptmin = 0.0)
     # Bounds
-	N::Int = length(objects)
-	@debug "Initial particles: $(N)"
+	N::Int = length(particles)
+	# @debug "Initial particles: $(N)"
 
 	# Algorithm parameters
 	R2::Float64 = R * R
@@ -319,15 +309,21 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
 
     # Copy input data into the jets container
     # N.B. Could specialise to accept PseudoJet objects directly (which is what HepMC3.jl reader provides)
-    for i in 1:N
-        jets[i] = PseudoJet(px(objects[i]), py(objects[i]), pz(objects[i]), energy(objects[i]))
-    end
+    # for i in 1:N
+    #     jets[i] = PseudoJet(px(objects[i]), py(objects[i]), pz(objects[i]), energy(objects[i]))
+    # end
+    copyto!(jets, particles)
 
     # Setup the initial history and get the total energy
     history, Qtot = initial_history(jets)
 
     # Now get the tiling setup
-    _eta = JetReconstruction.eta.(objects) # This could be avoided, probably...
+    # _eta = JetReconstruction.eta.(objects) # This could be avoided, probably...
+    _eta = Vector{Float64}(undef, length(particles))
+    for ijet in 1:length(particles)
+        _eta[ijet] = rap(particles[ijet])
+    end
+
     tiling = Tiling(setup_tiling(_eta, R))
 
     # ClusterSequence is a convenience struct that holds the state of the reconstruction
@@ -360,7 +356,7 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
         # Normalisation
         dij_min *= R2
 
-        @debug "Iteration $(iteration): dij_min $(dij_min); jetA $(jetA.id), jetB $(jetB.id)"
+        # @debug "Iteration $(iteration): dij_min $(dij_min); jetA $(jetA.id), jetB $(jetB.id)"
 
         if isvalid(jetB)
             # Jet-jet recombination

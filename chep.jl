@@ -68,10 +68,6 @@ function jet_process(
 )
 	@info "Will process $(size(events)[1]) events"
 
-	# First, convert all events into the Vector of Vectors that Atell's
-	# code likes
-	event_vector = pseudojets2vectors(events)
-
 	# Strategy
 	if (strategy == N2Plain)
 		jet_reconstruction = sequential_jet_reconstruct
@@ -83,6 +79,14 @@ function jet_process(
 		jet_reconstruction = tiled_jet_reconstruct_ll
 	else
 		throw(ErrorException("Strategy not yet implemented"))
+	end
+
+	if strategy == N2TiledLL
+		event_vector = events
+	else
+		# First, convert all events into the Vector of Vectors that Atell's
+		# code likes
+		event_vector = pseudojets2vectors(events)
 	end
 
 	# If we are dumping the results, setup the JSON structure
