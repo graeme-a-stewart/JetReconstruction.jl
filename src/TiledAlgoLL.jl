@@ -1,5 +1,7 @@
 # Implementation of Tiled Algorithm, using linked list
 # This is very similar to FastJet's N2Tiled algorithm
+# Original Julia implementation by Philippe Gras,
+# ported to this package by Graeme Stewart
 
 using Logging
 using Accessors
@@ -184,7 +186,6 @@ add_step_to_history!(clusterseq::ClusterSequence, parent1, parent2, jetp_index, 
     # a serious internal issue). However, we decided to throw an
     # InternalError so that the end user can decide to catch it and
     # retry the clustering with a different strategy.
-
     @assert parent1 >= 1
     if clusterseq.history[parent1].child != Invalid
         throw(ErrorException("Internal error. Trying to recombine an object that has previsously been recombined."))
@@ -266,7 +267,7 @@ end
 
 
 """Return all inclusive jets of a ClusterSequence with pt > ptmin"""
-inclusive_jets(clusterseq::ClusterSequence, ptmin = 0.) = begin
+function inclusive_jets(clusterseq::ClusterSequence, ptmin = 0.)
     dcut = ptmin*ptmin
     jets_local = Vector{PseudoJet}(undef, 0)
     # sizehint!(jets_local, length(clusterseq.jets))
@@ -295,7 +296,6 @@ function tiled_jet_reconstruct_ll(particles::Vector{PseudoJet}; p = -1, R = 1.0,
 
 	# Algorithm parameters
 	R2::Float64 = R * R
-    invR2::Float64 = 1/R2
 	p = (round(p) == p) ? Int(p) : p # integer p if possible
 
     # This will be used quite deep inside loops, but declare it here so that
@@ -309,17 +309,12 @@ function tiled_jet_reconstruct_ll(particles::Vector{PseudoJet}; p = -1, R = 1.0,
     resize!(jets, N)
 
     # Copy input data into the jets container
-    # N.B. Could specialise to accept PseudoJet objects directly (which is what HepMC3.jl reader provides)
-    # for i in 1:N
-    #     jets[i] = PseudoJet(px(objects[i]), py(objects[i]), pz(objects[i]), energy(objects[i]))
-    # end
     copyto!(jets, particles)
 
     # Setup the initial history and get the total energy
     history, Qtot = initial_history(jets)
 
     # Now get the tiling setup
-    # _eta = JetReconstruction.eta.(objects) # This could be avoided, probably...
     _eta = Vector{Float64}(undef, length(particles))
     for ijet in 1:length(particles)
         _eta[ijet] = rap(particles[ijet])
@@ -350,7 +345,6 @@ function tiled_jet_reconstruct_ll(particles::Vector{PseudoJet}; p = -1, R = 1.0,
         ilast = N - (iteration-1)
         # Search for the lowest value of min_dij_ijet
         dij_min, ibest = find_lowest(dij, ilast)
-        next_history_location = length(clusterseq.jets)+1
         @inbounds jetA = NNs[ibest]
         jetB = jetA.NN
 

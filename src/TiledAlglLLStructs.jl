@@ -1,5 +1,7 @@
 # Structure definitions for the Tiled algorithm, with linked list
 # and TiledJets (a la FastJet)
+# Original Julia implementation by Philippe Gras,
+# ported to this package by Graeme Stewart
 
 # TODO: Consider ENUM here, rather than magic numbers
 const Invalid=-3
@@ -13,20 +15,20 @@ struct HistoryElement
     original particle)"""
     parent1::Int
 
-    """index in _history where second parent of this jet
+    """Index in _history where second parent of this jet
     was created (NonexistentParent if this jet is an
     original particle); BeamJet if this history entry
     just labels the fact that the jet has recombined
     with the beam)"""
     parent2::Int
 
-    """index in _history where the current jet is
+    """Index in _history where the current jet is
     recombined with another jet to form its child. It
     is Invalid if this jet does not further
     recombine."""
     child::Int
 
-    """index in the _jets vector where we will find the
+    """Index in the _jets vector where we will find the
     PseudoJet object corresponding to this jet
     (i.e. the jet created at this entry of the
     history). NB: if this element of the history
@@ -34,11 +36,11 @@ struct HistoryElement
     jetp_index=Invalid."""
     jetp_index::Int
 
-    """the distance corresponding to the recombination
+    """The distance corresponding to the recombination
        at this stage of the clustering."""
     dij::Float64
 
-    """the largest recombination distance seen
+    """The largest recombination distance seen
        so far in the clustering history."""
     max_dij_so_far::Float64
 end

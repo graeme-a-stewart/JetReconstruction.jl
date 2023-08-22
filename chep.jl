@@ -81,11 +81,11 @@ function jet_process(
 		throw(ErrorException("Strategy not yet implemented"))
 	end
 
+	# The N2TiledLL algorithm uses PseudoJets so pass these directly
 	if strategy == N2TiledLL
 		event_vector = events
 	else
-		# First, convert all events into the Vector of Vectors that Atell's
-		# code likes
+		# The other algorithms swallow 4-vectors instead
 		event_vector = pseudojets2vectors(events)
 	end
 
@@ -96,10 +96,10 @@ function jet_process(
 
 	# Warmup code if we are doing a multi-sample timing run
 	if nsamples > 1 || profile
-		@debug "Doing initial warm-up run"
+		@info "Doing initial warm-up run"
 		for event in event_vector
 			finaljets, _ = jet_reconstruction(event, R = distance, p = power)
-			fj = final_jets(finaljets, ptmin)
+			final_jets(finaljets, ptmin)
 		end
 	end
 
@@ -112,7 +112,7 @@ function jet_process(
         println("Memory allocation statistics:")
         @timev for event in event_vector
             finaljets, _ = jet_reconstruction(event, R = distance, p = power)
-			fj = final_jets(finaljets, ptmin)
+			final_jets(finaljets, ptmin)
         end
         return nothing
     end
