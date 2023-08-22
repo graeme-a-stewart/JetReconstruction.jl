@@ -38,17 +38,17 @@ function determine_rapidity_extent(_eta::Vector{T}) where T <: AbstractFloat
 	# Get the minimum and maximum rapidities and at the same time bin
 	# the multiplicities as a function of rapidity to help decide how
 	# far out it's worth going
-	minrap = floatmax(T)
-	maxrap = -floatmax(T)
+	@inbounds minrap = _eta[1]
+	@inbounds maxrap = _eta[1]
 	ibin = 0
-	for y in _eta
-		minrap = min(minrap, y)
-		maxrap = max(maxrap, y)
+	for ieta in eachindex(_eta)
+		minrap = _eta[ieta] < minrap ? _eta[ieta] : minrap
+		maxrap = _eta[ieta] > maxrap ? _eta[ieta] : maxrap
 
 		# Bin in rapidity to decide how far to go with the tiling.
 		# The bins go from ibin=1 (rap=-infinity..-19)
 		# to ibin = nbins (rap=19..infinity for nrap=20)
-		ibin = clamp(1 + unsafe_trunc(Int, y + nrap), 1, nbins)
+		ibin = clamp(1 + unsafe_trunc(Int, _eta[ieta] + nrap), 1, nbins)
 		@inbounds counts[ibin] += 1
 	end
 

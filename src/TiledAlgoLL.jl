@@ -50,18 +50,11 @@ end
 
 """Return the tile index corresponding to the given eta,phi point"""
 tile_index(tiling_setup, eta::Float64, phi::Float64) = begin
-    if eta <= tiling_setup._tiles_eta_min
-        ieta = 1
-    elseif eta >= tiling_setup._tiles_eta_max
-        ieta = tiling_setup._n_tiles_eta
-    else
-        ieta = 1 + unsafe_trunc(Int, (eta - tiling_setup._tiles_eta_min) / tiling_setup._tile_size_eta)
-        # following needed in case of rare but nasty rounding errors
-        if ieta > tiling_setup._n_tiles_eta
-            ieta = tiling_setup._n_tiles_eta
-        end
-    end
-    iphi = min(unsafe_trunc(Int, phi  / tiling_setup._tile_size_phi), tiling_setup._n_tiles_phi)
+    # Use of 'clamp' to ensure we hit the correct range
+    # N.B. in eta there are values which are low and high by construction (open edge bins)
+    # whereas for phi it's just in case of nasty rounding errors
+    ieta = clamp(1 + unsafe_trunc(Int, (eta - tiling_setup._tiles_eta_min) / tiling_setup._tile_size_eta), 1, tiling_setup._n_tiles_eta)
+    iphi = clamp(unsafe_trunc(Int, phi  / tiling_setup._tile_size_phi), 1, tiling_setup._n_tiles_phi)
     return iphi * tiling_setup._n_tiles_eta + ieta
 end
 
@@ -76,7 +69,7 @@ tiledjet_set_jetinfo!(jet::TiledJet, clusterseq::ClusterSequence, jets_index, R2
     jet.NN_dist = R2
     jet.NN      = noTiledJet
 
-    # Find out which tile it belonds to
+    # Find out which tile this jet belongs to
     jet.tile_index = tile_index(clusterseq.tiling.setup, jet.eta, jet.phi)
 
     # Insert it into the tile's linked list of jets (at the beginning)
@@ -272,39 +265,36 @@ end
 
 
 
-"""Return all inclusive jets of a ClusterSequence with pt > ptmin
-N.B. this implementation returns 4-vectors, not PseudoJets
-"""
-inclusive_jets(clusterseq::ClusterSequence, ptmin = 0.) = begin
+"""Return all inclusive jets of a ClusterSequence with pt > ptmin"""
+inclusive_jets(cs::ClusterSequence, ptmin = 0.) = begin
     dcut = ptmin*ptmin
-    jets_local = Vector{Vector{Float64}}(undef, 0)
-    # sizehint!(jets_local, length(clusterseq.jets))
+    jets_local = PseudoJet[]
+    sizehint!(jets_local, length(cs.jets))
     # For inclusive jets with a plugin algorithm, we make no
     # assumptions about anything (relation of dij to momenta,
     # ordering of the dij, etc.)
-    # for elt in Iterators.reverse(clusterseq.history)
-    for elt in clusterseq.history
+    for elt in Iterators.reverse(cs.history)
         elt.parent2 == BeamJet || continue
-        iparent_jet = clusterseq.history[elt.parent1].jetp_index
-        jet = clusterseq.jets[iparent_jet]
+        iparent_jet = cs.history[elt.parent1].jetp_index
+        jet = cs.jets[iparent_jet]
         if pt2(jet) >= dcut
-            push!(jets_local, [jet.px, jet.py, jet.pz, jet.E])
+            push!(jets_local, jet)
         end
     end
     jets_local
 end
 
+
 """
 Main jet reconstruction algorithm
 """
-function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, recombine = +, ptmin = 0.0) where T
-    # Bounds
-	N::Int = length(objects)
-	@debug "Initial particles: $(N)"
+
+function tiled_jet_reconstruct_ll(particles::Vector{PseudoJet}; p = -1, R = 1.0, recombine = +, ptmin = 0.0)
+        # Bounds
+	N::Int = length(particles)
 
 	# Algorithm parameters
 	R2::Float64 = R * R
-    invR2::Float64 = 1/R2
 	p = (round(p) == p) ? Int(p) : p # integer p if possible
 
     # This will be used quite deep inside loops, but declare it here so that
@@ -319,15 +309,16 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
 
     # Copy input data into the jets container
     # N.B. Could specialise to accept PseudoJet objects directly (which is what HepMC3.jl reader provides)
-    for i in 1:N
-        jets[i] = PseudoJet(px(objects[i]), py(objects[i]), pz(objects[i]), energy(objects[i]))
-    end
+    copyto!(jets, particles)
 
     # Setup the initial history and get the total energy
     history, Qtot = initial_history(jets)
 
     # Now get the tiling setup
-    _eta = JetReconstruction.eta.(objects) # This could be avoided, probably...
+    _eta = Vector{Float64}(undef, length(particles))
+    for ijet in 1:length(particles)
+        _eta[ijet] = rap(particles[ijet])
+    end
     tiling = Tiling(setup_tiling(_eta, R))
 
     # ClusterSequence is a convenience struct that holds the state of the reconstruction
@@ -353,14 +344,15 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
         ilast = N - (iteration-1)
         # Search for the lowest value of min_dij_ijet
         dij_min, ibest = find_lowest(dij, ilast)
-        next_history_location = length(clusterseq.jets)+1
         @inbounds jetA = NNs[ibest]
         jetB = jetA.NN
 
         # Normalisation
         dij_min *= R2
 
-        @debug "Iteration $(iteration): dij_min $(dij_min); jetA $(jetA.id), jetB $(jetB.id)"
+        # This is useful for debugging, but this code is hit so hard that there is a significant
+        # penalty to keeping it in, even in non-debug mode (20μs per event on a MacBook M2Pro)
+        # @debug "Iteration $(iteration): dij_min $(dij_min); jetA $(jetA.id), jetB $(jetB.id)"
 
         if isvalid(jetB)
             # Jet-jet recombination
@@ -378,8 +370,8 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
             oldB = copy(jetB)  # take a copy because we will need it...
 
             tiledjet_remove_from_tiles!(clusterseq.tiling, jetB)
-            tiledjet_set_jetinfo!(jetB, clusterseq, nn, R2) # cause jetB to become _jets[nn]
-            #                                  (in addition, registers the jet in the tiling)
+            tiledjet_set_jetinfo!(jetB, clusterseq, nn, R2) # Cause jetB to become _jets[nn]
+                                                            # (in addition, registers the jet in the tiling)
         else
             # Jet-beam recombination
             do_iB_recombination_step!(clusterseq, jetA.jets_index, dij_min)
@@ -452,5 +444,6 @@ function tiled_jet_reconstruct_ll(objects::AbstractArray{T}; p = -1, R = 1.0, re
             @inbounds dij[jetB.dij_posn] = _tj_diJ(jetB)
         end
     end
+
     inclusive_jets(clusterseq, ptmin), clusterseq.history
 end

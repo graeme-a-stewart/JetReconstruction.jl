@@ -292,7 +292,7 @@ Find neighbour for a particular jet index
 """
 const updated_pair_jets = Int[] # If any reverese mappings change their NN distance, need to record this to update dij
 function find_jet_nearest_neighbour!(tiles, flatjets::FlatJets, tiling_setup::TilingDef, ijet::Int, R2)
-    @debug "Finding neighbours of $ijet"
+    # @debug "Finding neighbours of $ijet"
     set_nearest_neighbour!(flatjets, ijet, 0)
     set_nn_distance!(flatjets, ijet, R2)
     empty!(updated_pair_jets)
@@ -385,7 +385,7 @@ moved from old_index to new_index
 """
 function move_indexes!(flatjets::FlatJets, old_index, new_index)
     # Do this in a simple loop - it's contiguous memory, very fast and can be vectorised
-    @debug "Moving jet $old_index to $new_index"
+    # @debug "Moving jet $old_index to $new_index"
     @turbo for ijet ∈ eachindex(flatjets.nearest_neighbour)
         moveme = flatjets.nearest_neighbour[ijet] == old_index
         flatjets.nearest_neighbour[ijet] = moveme ? new_index : flatjets.nearest_neighbour[ijet]
@@ -405,7 +405,7 @@ Move any tiles which have a first_jet that has been shuffled to the new
 index
 """
 function move_tile_first_jet!(tiles, old_index, new_index)
-    @debug "Moving first_jet $old_index to $new_index"
+    # @debug "Moving first_jet $old_index to $new_index"
     @turbo for itile ∈ eachindex(tiles)
         moveme = tiles[itile] == old_index
         tiles[itile] = moveme ? new_index : tiles[itile]
@@ -485,11 +485,11 @@ function tiled_jet_reconstruct_soa_global(objects::AbstractArray{T}; p = -1, R =
 	# Thus each time we lose one jet, and it therefore takes N iterations to complete
 	# the algorithm
 	for iteration in 1:N
-        @debug "Iteration $(iteration) - Active Jets $(lastindex(flatjets.kt2))"
+        # @debug "Iteration $(iteration) - Active Jets $(lastindex(flatjets.kt2))"
 
         iclosejetA = find_lowest_dij_index(flatjets.dij_distance)
         iclosejetB = nearest_neighbour(flatjets, iclosejetA)
-        @debug "Closest jets $iclosejetA, $iclosejetB: $(dij_distance(flatjets, iclosejetA))"
+        @debug "Iteration $(iteration): dij_min $(dij_distance(flatjets, iclosejetA)*R2); jetA $iclosejetA, jetB $iclosejetB"
 
         # Finalise jet or merge jets?
         if iclosejetB != 0
@@ -501,7 +501,7 @@ function tiled_jet_reconstruct_soa_global(objects::AbstractArray{T}; p = -1, R =
             if iclosejetA < iclosejetB
                 iclosejetA, iclosejetB = iclosejetB, iclosejetA
             end
-            @debug "Merge jets: jet indexes $(jet_index(flatjets, iclosejetA)) in $(get_tile_cartesian_indices(tiling_setup, tile_index(flatjets, iclosejetA))), $(jet_index(flatjets, iclosejetB)) in $(get_tile_cartesian_indices(tiling_setup, tile_index(flatjets, iclosejetB)))"
+            # @debug "Merge jets: jet indexes $(jet_index(flatjets, iclosejetA)) in $(get_tile_cartesian_indices(tiling_setup, tile_index(flatjets, iclosejetA))), $(jet_index(flatjets, iclosejetB)) in $(get_tile_cartesian_indices(tiling_setup, tile_index(flatjets, iclosejetB)))"
             newjet = recombine(jet_objects[jet_index(flatjets, iclosejetA)], 
                                jet_objects[jet_index(flatjets, iclosejetB)])
             push!(jet_objects, newjet)
@@ -517,17 +517,17 @@ function tiled_jet_reconstruct_soa_global(objects::AbstractArray{T}; p = -1, R =
             # need to be rescanned
             empty!(itouched_jets)
             union!(itouched_jets, find_neighbours_of(flatjets, iclosejetA, iclosejetB))
-            @debug "Jets to update from A/B neighbours: $(itouched_jets)"
+            # @debug "Jets to update from A/B neighbours: $(itouched_jets)"
             ####
             # Now push the newjet into jetB's slot, add it to its tile's jet list and to
             # the set of jets that need to rescan their neighbours
-            @debug "Adding merged jet to slot $iclosejetB"
+            # @debug "Adding merged jet to slot $iclosejetB"
             insert_flatjet!(flatjets, tiling_setup, p, iclosejetB, inewjet, newjet)
             push_to_tile!(tiles, tile_index(flatjets, iclosejetB), flatjets, iclosejetB)
             push!(itouched_jets, iclosejetB) # This is the newjet!
             # Now kill jetA, shuffling if needed
             shuffled_jet = suppress_flatjet!(flatjets, iclosejetA)
-            @debug "Killed jet $iclosejetA and shuffled jet $shuffled_jet"
+            # @debug "Killed jet $iclosejetA and shuffled jet $shuffled_jet"
             # If we had a shuffled jet, we need to update any jet who had this jet as their
             # neighbour
             if shuffled_jet != 0
@@ -544,7 +544,7 @@ function tiled_jet_reconstruct_soa_global(objects::AbstractArray{T}; p = -1, R =
             end
         else
             # Finalise jet A
-            @debug "Finalise jet: jet index $(jet_index(flatjets, iclosejetA))"
+            # @debug "Finalise jet: jet index $(jet_index(flatjets, iclosejetA))"
             push!(jets, jet_objects[jet_index(flatjets, iclosejetA)])
             # Remove finalsied jet from its tile jet lists
             delete_from_tile!(tiles, tile_index(flatjets, iclosejetA), flatjets, iclosejetA)
@@ -552,10 +552,10 @@ function tiled_jet_reconstruct_soa_global(objects::AbstractArray{T}; p = -1, R =
             # need to be rescanned
             empty!(itouched_jets)
             union!(itouched_jets, find_neighbours_of(flatjets, iclosejetA))
-            @debug "Jets to update from A neighbours: $(itouched_jets)"
+            # @debug "Jets to update from A neighbours: $(itouched_jets)"
             # Now kill jetA, shuffling if needed
             shuffled_jet = suppress_flatjet!(flatjets, iclosejetA)
-            @debug "Killed jet $iclosejetA and shuffled jet $shuffled_jet"
+            # @debug "Killed jet $iclosejetA and shuffled jet $shuffled_jet"
             # If we had a shuffled jet, we need to update any jet who had this jet as their
             # neighbour
             if shuffled_jet != 0

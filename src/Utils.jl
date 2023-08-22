@@ -43,16 +43,27 @@ function pseudojets2vectors(events::Vector{Vector{PseudoJet}})
 	event_vector
 end
 
+"""Filter final jets against a p_t cut"""
 function final_jets(jets::Vector{Vector{Float64}}, ptmin::AbstractFloat)
-	count = 0
 	final_jets = Vector{FinalJet}()
 	sizehint!(final_jets, 6)
+	dcut = ptmin^2
 	for jet in jets
-		dcut = ptmin^2
 		p = PseudoJet(jet[1], jet[2], jet[3], jet[4])
 		if p._pt2 > dcut
-			count += 1
 			push!(final_jets, FinalJet(rap(p), phi(p), sqrt(pt2(p))))
+		end
+	end
+	final_jets
+end
+
+function final_jets(jets::Vector{PseudoJet}, ptmin::AbstractFloat)
+	final_jets = Vector{FinalJet}()
+	sizehint!(final_jets, 6)
+	dcut = ptmin^2
+	for jet in jets
+		if pt2(jet) > dcut
+			push!(final_jets, FinalJet(rap(jet), phi(jet), sqrt(pt2(jet))))
 		end
 	end
 	final_jets
