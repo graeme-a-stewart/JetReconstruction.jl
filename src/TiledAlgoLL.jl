@@ -262,12 +262,10 @@ end
 
 
 
-"""Return all inclusive jets of a ClusterSequence with pt > ptmin
-N.B. this implementation returns 4-vectors, not PseudoJets
-"""
+"""Return all inclusive jets of a ClusterSequence with pt > ptmin"""
 inclusive_jets(clusterseq::ClusterSequence, ptmin = 0.) = begin
     dcut = ptmin*ptmin
-    jets_local = Vector{Vector{Float64}}(undef, 0)
+    jets_local = Vector{PseudoJet}(undef, 0)
     # sizehint!(jets_local, length(clusterseq.jets))
     # For inclusive jets with a plugin algorithm, we make no
     # assumptions about anything (relation of dij to momenta,
@@ -278,7 +276,7 @@ inclusive_jets(clusterseq::ClusterSequence, ptmin = 0.) = begin
         iparent_jet = clusterseq.history[elt.parent1].jetp_index
         jet = clusterseq.jets[iparent_jet]
         if pt2(jet) >= dcut
-            push!(jets_local, [jet.px, jet.py, jet.pz, jet.E])
+            push!(jets_local, jet)
         end
     end
     jets_local
