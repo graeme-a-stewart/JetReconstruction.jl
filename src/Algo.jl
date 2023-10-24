@@ -1,3 +1,14 @@
+"Structure of Arrays for the internal EDM of N2Plain"
+struct PlainAlg_SoA{T}
+    energy::Vector{T}
+    px::Vector{T}
+    py::Vector{T}
+    pz::Vector{T}
+    kt2::Vector{T}
+    phi::Vector{T}
+    rapidity::Vector{T}
+end
+
 Base.@propagate_inbounds function dist(i, j, rapidity_array, phi_array)
     drapidity = rapidity_array[i] - rapidity_array[j]
     dphi = abs(phi_array[i] - phi_array[j])
@@ -89,6 +100,13 @@ function sequential_jet_reconstruct(objects::AbstractArray{T}; p = -1, R = 1.0, 
     kt2_array::Vector{Float64} = pt2.(objects) .^ p
     phi_array::Vector{Float64} = phi.(objects)
     rapidity_array::Vector{Float64} = rapidity.(objects)
+
+    px_array::Vector{Float64} = px.(objects)
+    py_array::Vector{Float64} = py.(objects)
+    pz_array::Vector{Float64} = pz.(objects)
+    energy_array::Vector{Float64} = energy.(objects)
+
+    objects_soa = PlainAlg_SoA(energy_array, px_array, py_array, pz_array, kt2_array, phi_array, rapidity_array)
 
     objects_array = copy(objects)
 
