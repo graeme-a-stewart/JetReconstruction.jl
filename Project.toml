@@ -18,6 +18,7 @@ ProfileSVG = "132c30aa-f267-4189-9183-c8a63c7e05e6"
 StatProfilerHTML = "a8a75453-ed82-57c9-9e16-4cd1196ecbf5"
 
 [compat]
+LoopVectorization = "0.12"
 LorentzVectorHEP = "0.1.6"
 julia = "1.8"
 
