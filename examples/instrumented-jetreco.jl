@@ -14,6 +14,12 @@ using StatProfilerHTML
 using Logging
 using JSON
 
+try
+    using UnicodePlots
+catch e 
+    @debug "Could not load UnicodePlots to make histogram of timings"
+end
+
 using LorentzVectorHEP
 using JetReconstruction
 
@@ -113,7 +119,7 @@ function benchmark_jet_reco(events::Vector{Vector{T}};
                             nsamples::Integer = 1,
                             gcoff::Bool = false,
                             dump::Union{String, Nothing} = nothing,
-                            dump_cs = false) where {T <: JetReconstruction.FourMomentum}
+                            dump_cs = false, hist = false) where {T <: JetReconstruction.FourMomentum}
 
     # If we are dumping the results, setup the JSON structure
     if !isnothing(dump)
@@ -129,6 +135,7 @@ function benchmark_jet_reco(events::Vector{Vector{T}};
     cumulative_time = 0.0
     cumulative_time2 = 0.0
     lowest_time = typemax(Float64)
+    sample_array = Float64[]
     # Do a warm up run if we are running more than once
     start = nsamples > 1 ? 0 : 1
     for irun in start:nsamples
@@ -178,19 +185,21 @@ function benchmark_jet_reco(events::Vector{Vector{T}};
             cumulative_time += dt_μs
             cumulative_time2 += dt_μs^2
             lowest_time = dt_μs < lowest_time ? dt_μs : lowest_time
+            push!(sample_array, dt_μs)
         end
     end
 
     mean = cumulative_time / nsamples
-    cumulative_time2 /= nsamples
+    mean_cumulative_time2 = cumulative_time2 / nsamples
     if nsamples > 1
-        sigma = sqrt(nsamples / (nsamples - 1) * (cumulative_time2 - mean^2))
+        sigma = sqrt(nsamples / (nsamples - 1) * (mean_cumulative_time2 - mean^2))
     else
         sigma = 0.0
     end
     mean /= length(events)
     sigma /= length(events)
     lowest_time /= length(events)
+    sample_array .= sample_array ./ length(events)
     # Why also record the lowest time? 
     # 
     # The argument is that on a "busy" machine, the run time of an application is
@@ -201,6 +210,13 @@ function benchmark_jet_reco(events::Vector{Vector{T}};
     println("Processed $(length(events)) events $(nsamples) times")
     println("Average time per event $(mean) ± $(sigma) μs")
     println("Lowest time per event $lowest_time μs")
+
+    if hist && nsamples > 1 && @isdefined UnicodePlots
+        println(UnicodePlots.histogram(sample_array, nbins = min(20, nsamples),
+                                        title = "Distribution of time per event across samples",
+                                        xlabel = "Counts",
+                                        ylabel = "t/event (μs)"))
+    end
 
     if !isnothing(dump)
         open(dump, "w") do io
@@ -283,6 +299,10 @@ function parse_command_line(args)
         "--dump"
         help = "Write list of reconstructed jets to a JSON formatted file"
 
+        "--hist"
+        help = "Display a histogram of the timing information for benchmark runs"
+        action = :store_true
+
         "--info"
         help = "Print info level log messages"
         action = :store_true
@@ -344,7 +364,7 @@ function main()
                            ptmin = args[:ptmin], dcut = args[:exclusive_dcut],
                            njets = args[:exclusive_njets],
                            nsamples = args[:nsamples], gcoff = args[:gcoff],
-                           dump = args[:dump], dump_cs = args[:dump_clusterseq])
+                           dump = args[:dump], dump_cs = args[:dump_clusterseq], hist = args[:hist])
     end
     nothing
 end
