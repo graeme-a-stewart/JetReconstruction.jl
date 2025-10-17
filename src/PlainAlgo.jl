@@ -45,7 +45,7 @@ Base.@propagate_inbounds function dij(i, kt2_array, nn, nndist)
 end
 
 """
-    upd_nn_crosscheck!(i, from, to, rapidity_array, phi_array, R2, nndist, nn)
+    upd_nn_crosscheck!(i, from, to, ppreco, R2)
 
 Update the nearest neighbor information for a given particle index `i` against
 all particles in the range indexes `from` to `to`. The function updates the
@@ -57,31 +57,27 @@ respectively, both for particle `i` and the checked particles `[from:to]` (hence
 - `i::Int`: The index of the particle to update and check against.
 - `from::Int`: The starting index of the range of particles to check against.
 - `to::Int`: The ending index of the range of particles to check against.
-- `rapidity_array`: An array containing the rapidity values of all particles.
-- `phi_array`: An array containing the phi values of the all particles.
+- `ppreco`: StructArray containing the reconstruction data (rapidity, phi, nndist, nn fields).
 - `R2`: The squared jet distance threshold for considering a particle as a
   neighbour.
-- `nndist`: The array that stores the nearest neighbor distances.
-- `nn`: The array that stores the nearest neighbor indices.
 """
 Base.@propagate_inbounds function upd_nn_crosscheck!(i::Int, from::Int, to::Int,
-                                                     rapidity_array, phi_array, R2, nndist,
-                                                     nn)
+                                                     ppreco, R2)
     nndist_min = R2
     nn_min = i
     @inbounds @simd for j in from:to
-        Δ2 = dist(i, j, rapidity_array, phi_array)
+        Δ2 = dist(i, j, ppreco.rapidity, ppreco.phi)
         if Δ2 < nndist_min
             nn_min = j
             nndist_min = Δ2
         end
-        if Δ2 < nndist[j]
-            nndist[j] = Δ2
-            nn[j] = i
+        if Δ2 < ppreco.nndist[j]
+            ppreco.nndist[j] = Δ2
+            ppreco.nn[j] = i
         end
     end
-    nndist[i] = nndist_min
-    nn[i] = nn_min
+    ppreco.nndist[i] = nndist_min
+    ppreco.nn[i] = nn_min
 end
 
 # finds new nn for i
@@ -331,7 +327,7 @@ function _plain_jet_reconstruct!(particles::AbstractVector{PseudoJet};
 
     # Initialize nearest neighbours
     @simd for i in 1:N
-        upd_nn_crosscheck!(i, 1, i - 1, ppreco.rapidity, ppreco.phi, R2, ppreco.nndist, ppreco.nn)
+        upd_nn_crosscheck!(i, 1, i - 1, ppreco, R2)
     end
 
     # diJ table * R2
