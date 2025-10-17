@@ -290,9 +290,6 @@ function _plain_jet_reconstruct!(particles::AbstractVector{PseudoJet};
         ppreco.nndij[i] = 0.0
     end
 
-    # Maps index from the compact array to the clusterseq jet vector
-    clusterseq_index::Vector{Int} = collect(1:N)
-
     # Setup the initial history and get the total energy
     history, Qtot = initial_history(particles)
     clusterseq = ClusterSequence(algorithm, p, R, RecoStrategy.N2Plain, particles, history,
@@ -322,8 +319,8 @@ function _plain_jet_reconstruct!(particles::AbstractVector{PseudoJet};
             end
 
             # Resolve real jets
-            jetI = clusterseq.jets[clusterseq_index[i]]
-            jetJ = clusterseq.jets[clusterseq_index[j]]
+            jetI = clusterseq.jets[ppreco.index[i]]
+            jetJ = clusterseq.jets[ppreco.index[j]]
 
             # Recombine i and j into the next jet
             newjet_k = length(clusterseq.jets) + 1
@@ -341,12 +338,12 @@ function _plain_jet_reconstruct!(particles::AbstractVector{PseudoJet};
             ppreco.kt2[i] = pt2(clusterseq.jets[newjet_k])^p
             ppreco.rapidity[i] = rapidity(clusterseq.jets[newjet_k])
             ppreco.phi[i] = phi(clusterseq.jets[newjet_k])
-            clusterseq_index[i] = newjet_k
+            ppreco.index[i] = newjet_k
             ppreco.nndist[i] = R2
             ppreco.nn[i] = i
         else # i == j, this is a final jet ("merged with beam")
             add_step_to_history!(clusterseq,
-                                 clusterseq.jets[clusterseq_index[i]]._cluster_hist_index,
+                                 clusterseq.jets[ppreco.index[i]]._cluster_hist_index,
                                  BeamJet, Invalid, dij_min)
         end
 
@@ -358,7 +355,7 @@ function _plain_jet_reconstruct!(particles::AbstractVector{PseudoJet};
             ppreco.nndist[j] = ppreco.nndist[N]
             ppreco.nn[j] = ppreco.nn[N]
             ppreco.nndij[j] = ppreco.nndij[N]
-            clusterseq_index[j] = clusterseq_index[N]
+            ppreco.index[j] = ppreco.index[N]
         end
 
         Nn::Int = N
