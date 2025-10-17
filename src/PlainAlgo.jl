@@ -1,47 +1,43 @@
 using LoopVectorization
 
 """
-    dist(i, j, rapidity_array, phi_array)
+    dist(i, j, ppreco)
 
-Compute the distance between points in a 2D space defined by rapidity and phi coordinates.
+Compute the distance between points in a 2D space defined by rapidity and phi coordinates,
+using the ppreco StructArray.
 
 # Arguments
-- `i::Int`: Index of the first point to consider (indexes into `rapidity_array` and `phi_array`).
-- `j::Int`: Index of the second point to consider (indexes into `rapidity_array` and `phi_array`).
-- `rapidity_array::Vector{Float64}`: Array of rapidity coordinates.
-- `phi_array::Vector{Float64}`: Array of phi coordinates.
+- `i::Int`: Index of the first point.
+- `j::Int`: Index of the second point.
+- `ppreco`: StructArray containing rapidity and phi fields.
 
 # Returns
 - `distance::Float64`: The distance between the two points.
 """
-Base.@propagate_inbounds function dist(i, j, rapidity_array, phi_array)
-    drapidity = rapidity_array[i] - rapidity_array[j]
-    dphi = abs(phi_array[i] - phi_array[j])
+Base.@propagate_inbounds function dist(i, j, ppreco)
+    drapidity = ppreco.rapidity[i] - ppreco.rapidity[j]
+    dphi = abs(ppreco.phi[i] - ppreco.phi[j])
     dphi = ifelse(dphi > pi, 2pi - dphi, dphi)
     @muladd drapidity * drapidity + dphi * dphi
 end
 
 """
-    dij(i, kt2_array, nn, nndist)
+    dij(i, ppreco)
 
-Compute the dij value for a given index `i` to its nearest neighbor. The nearest
-neighbor is determined from `nn[i]`, and the metric distance to the nearest
-neighbor is given by the distance `nndist[i]` applying the lower of the
-`kt2_array` values for the two particles.
+Compute the dij value for a given index `i` to its nearest neighbor using the
+ppreco StructArray.
 
 # Arguments
 - `i`: The index of the element.
-- `kt2_array`: An array of kt2 values.
-- `nn`: An array of nearest neighbors.
-- `nndist`: An array of nearest neighbor distances.
+- `ppreco`: StructArray containing kt2, nn, and nndist fields.
 
 # Returns
 - The computed dij value.
 """
-Base.@propagate_inbounds function dij(i, kt2_array, nn, nndist)
-    j = nn[i]
-    d = nndist[i]
-    d * min(kt2_array[i], kt2_array[j])
+Base.@propagate_inbounds function dij(i, ppreco)
+    j = ppreco.nn[i]
+    d = ppreco.nndist[i]
+    d * min(ppreco.kt2[i], ppreco.kt2[j])
 end
 
 """
@@ -66,7 +62,7 @@ Base.@propagate_inbounds function upd_nn_crosscheck!(i::Int, from::Int, to::Int,
     nndist_min = R2
     nn_min = i
     @inbounds @simd for j in from:to
-        Δ2 = dist(i, j, ppreco.rapidity, ppreco.phi)
+        Δ2 = dist(i, j, ppreco)
         if Δ2 < nndist_min
             nn_min = j
             nndist_min = Δ2
@@ -80,10 +76,8 @@ Base.@propagate_inbounds function upd_nn_crosscheck!(i::Int, from::Int, to::Int,
     ppreco.nn[i] = nn_min
 end
 
-# finds new nn for i
-
 """
-    upd_nn_nocross!(i, from, to, rapidity_array, phi_array, R2, nndist, nn)
+    upd_nn_nocross!(i, from, to, ppreco, R2)
 
 Update the nearest neighbor information for a given particle index `i` against
 all particles in the range indexes `from` to `to`. The function updates the
@@ -94,92 +88,71 @@ respectively, only for particle `i` (hence *nocross*).
 - `i::Int`: The index of the particle to update and check against.
 - `from::Int`: The starting index of the range of particles to check against.
 - `to::Int`: The ending index of the range of particles to check against.
-- `rapidity_array`: An array containing the rapidity values of all particles.
-- `phi_array`: An array containing the phi values of the all particles.
-- `R2`: The squared jet distance threshold for considering a particle as a
-  neighbour.
-- `nndist`: The array that stores the nearest neighbor distances.
-- `nn`: The array that stores the nearest neighbor indices.
+- `ppreco`: StructArray containing rapidity, phi, nndist, nn fields.
+- `R2`: The squared jet distance threshold for considering a particle as a neighbour.
 """
 Base.@propagate_inbounds function upd_nn_nocross!(i::Int, from::Int, to::Int,
-                                                  rapidity_array, phi_array, R2, nndist, nn)
+                                                  ppreco, R2)
     nndist_min = R2
     nn_min = i
     @inbounds @simd for j in from:(i - 1)
-        Δ2 = dist(i, j, rapidity_array, phi_array)
+        Δ2 = dist(i, j, ppreco)
         if Δ2 <= nndist_min
             nn_min = j
             nndist_min = Δ2
         end
     end
     @inbounds @simd for j in (i + 1):to
-        Δ2 = dist(i, j, rapidity_array, phi_array)
+        Δ2 = dist(i, j, ppreco)
         f = Δ2 <= nndist_min
         nn_min = ifelse(f, j, nn_min)
         nndist_min = ifelse(f, Δ2, nndist_min)
     end
-    nndist[i] = nndist_min
-    nn[i] = nn_min
+    ppreco.nndist[i] = nndist_min
+    ppreco.nn[i] = nn_min
 end
 
 """
-    upd_nn_step!(i, j, k, N, Nn, kt2_array, rapidity_array, phi_array, R2, nndist, nn, nndij)
+    upd_nn_step!(i, j, k, N, Nn, ppreco, R2)
 
-Update the nearest neighbor information after a jet merge step.
+Update the nearest neighbor information after a jet merge step using the ppreco StructArray.
 
-Arguments:
+# Arguments
 - `i`: Index of the first particle in the last merge step.
 - `j`: Index of the second particle in the last merge step.
-- `k`: Index of the current particle for which the nearest neighbour will be
-  updated.
+- `k`: Index of the current particle for which the nearest neighbour will be updated.
 - `N`: Total number of particles (currently valid array indexes are `[1:N]`).
 - `Nn`: Number of nearest neighbors to consider.
-- `kt2_array`: Array of transverse momentum squared values.
-- `rapidity_array`: Array of rapidity values.
-- `phi_array`: Array of azimuthal angle values.
+- `ppreco`: StructArray containing all necessary fields.
 - `R2`: Distance threshold squared for nearest neighbors.
-- `nndist`: Array of nearest neighbor geometric distances.
-- `nn`: Array of nearest neighbor indices.
-- `nndij`: Array of metric distances between particles.
-
-This function updates the nearest neighbor information for the current particle
-`k` by considering the distances to particles `i` and `j`. It checks if the
-distance between `k` and `i` is smaller than the current nearest neighbor
-distance for `k`, and updates the nearest neighbor information accordingly. It
-also updates the nearest neighbor information for `i` if the distance between
-`k` and `i` is smaller than the current nearest neighbor distance for `i`.
-Finally, it checks if the nearest neighbor of `k` is the total number of
-particles `Nn` and updates it to `j` if necessary.
-
 """
-Base.@propagate_inbounds function upd_nn_step!(i, j, k, N, Nn, kt2_array, rapidity_array,
-                                               phi_array, R2, nndist, nn, nndij)
-    nnk = nn[k] # Nearest neighbour of k
+Base.@propagate_inbounds function upd_nn_step!(i, j, k, N, Nn, ppreco, R2)
+    nnk = ppreco.nn[k] # Nearest neighbour of k
     if nnk == i || nnk == j
         # Our old nearest neighbour is one of the merged particles
-        upd_nn_nocross!(k, 1, N, rapidity_array, phi_array, R2, nndist, nn) # Update dist and nn
-        nndij[k] = dij(k, kt2_array, nn, nndist)
-        nnk = nn[k]
+        upd_nn_nocross!(k, 1, N, ppreco, R2) # Update dist and nn
+        ppreco.nndij[k] = dij(k, ppreco)
+        nnk = ppreco.nn[k]
     end
 
     if j != i && k != i
         # Update particle's nearest neighbour if it's not i and the merge step was not a beam merge
-        Δ2 = dist(i, k, rapidity_array, phi_array)
-        if Δ2 < nndist[k]
-            nndist[k] = Δ2
-            nnk = nn[k] = i
-            nndij[k] = dij(k, kt2_array, nn, nndist)
+        Δ2 = dist(i, k, ppreco)
+        if Δ2 < ppreco.nndist[k]
+            ppreco.nndist[k] = Δ2
+            nnk = ppreco.nn[k] = i
+            ppreco.nndij[k] = dij(k, ppreco)
         end
 
-        cond = Δ2 < nndist[i]
-        nndist[i], nn[i] = ifelse(cond, (Δ2, k), (nndist[i], nn[i]))
+        cond = Δ2 < ppreco.nndist[i]
+        ppreco.nndist[i], ppreco.nn[i] = ifelse(cond, (Δ2, k), (ppreco.nndist[i], ppreco.nn[i]))
     end
 
     # If the previous nearest neighbour was the final jet in the array before
     # the merge that was just done, this jet has now been moved in the array to
     # position k (to compactify the array), so we need to update the nearest
     # neighbour
-    nnk == Nn && (nn[k] = j)
+    nnk == Nn && (ppreco.nn[k] = j)
 end
 
 """
@@ -332,7 +305,7 @@ function _plain_jet_reconstruct!(particles::AbstractVector{PseudoJet};
 
     # diJ table * R2
     @inbounds @simd for i in 1:N
-        ppreco.nndij[i] = dij(i, ppreco.kt2, ppreco.nn, ppreco.nndist)
+        ppreco.nndij[i] = dij(i, ppreco)
     end
 
     iteration::Int = 1
@@ -394,11 +367,10 @@ function _plain_jet_reconstruct!(particles::AbstractVector{PseudoJet};
 
         # Update nearest neighbours step
         @inbounds @simd for k in 1:N
-            upd_nn_step!(i, j, k, N, Nn, ppreco.kt2, ppreco.rapidity, ppreco.phi, R2, ppreco.nndist,
-                         ppreco.nn, ppreco.nndij)
+            upd_nn_step!(i, j, k, N, Nn, ppreco, R2)
         end
 
-        ppreco.nndij[i] = dij(i, ppreco.kt2, ppreco.nn, ppreco.nndist)
+        ppreco.nndij[i] = dij(i, ppreco)
     end
 
     # Return the final cluster sequence structure
