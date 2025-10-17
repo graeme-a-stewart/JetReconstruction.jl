@@ -191,3 +191,20 @@ Compute the scalar transverse momentum (pt) of a PseudoJet.
 - The transverse momentum (pt) of the PseudoJet.
 """
 pt(p::PseudoJet) = sqrt(p._pt2)
+
+"""
+    struct PPRecoJet
+
+Structure used in the PlainAlgo implementation of the pp recombination scheme
+with the optimised necessary variables for the algorithm. This is used as a
+StructArray object to have underlying Structure of Array storage.
+"""
+mutable struct PPRecoJet
+    index::Int
+    kt2::Float64
+    phi::Float64
+    rapidity::Float64
+    nn::Int
+    nndist::Float64
+    nndij::Float64
+end

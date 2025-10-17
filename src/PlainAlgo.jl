@@ -306,15 +306,20 @@ function _plain_jet_reconstruct!(particles::AbstractVector{PseudoJet};
     # Parameters
     R2 = R^2
 
-    # Optimised compact arrays for determining the next merge step
+    # Use a StructArray for optimised reconstruction on a SoA with the
+    # necessary fields. N slots are required.
     # We make sure these arrays are type stable - have seen issues where, depending on the values
     # returned by the methods, they can become unstable and performance degrades
-    kt2_array::Vector{Float64} = pt2.(particles) .^ p
-    phi_array::Vector{Float64} = phi.(particles)
-    rapidity_array::Vector{Float64} = rapidity.(particles)
-    nn::Vector{Int} = Vector(1:N) # nearest neighbours
-    nndist::Vector{Float64} = fill(float(R2), N) # geometric distances to the nearest neighbour
-    nndij::Vector{Float64} = zeros(N) # dij metric distance
+    ppreco = StructArray{PPRecoJet}(undef, N)
+    @inbounds @simd for i in eachindex(particles)
+        ppreco.index[i] = i
+        ppreco.kt2[i] = pt2(particles[i])^p
+        ppreco.phi[i] = phi(particles[i])
+        ppreco.rapidity[i] = rapidity(particles[i])
+        ppreco.nn[i] = i
+        ppreco.nndist[i] = float(R2)
+        ppreco.nndij[i] = 0.0
+    end
 
     # Maps index from the compact array to the clusterseq jet vector
     clusterseq_index::Vector{Int} = collect(1:N)
@@ -326,20 +331,20 @@ function _plain_jet_reconstruct!(particles::AbstractVector{PseudoJet};
 
     # Initialize nearest neighbours
     @simd for i in 1:N
-        upd_nn_crosscheck!(i, 1, i - 1, rapidity_array, phi_array, R2, nndist, nn)
+        upd_nn_crosscheck!(i, 1, i - 1, ppreco.rapidity, ppreco.phi, R2, ppreco.nndist, ppreco.nn)
     end
 
     # diJ table * R2
     @inbounds @simd for i in 1:N
-        nndij[i] = dij(i, kt2_array, nn, nndist)
+        ppreco.nndij[i] = dij(i, ppreco.kt2, ppreco.nn, ppreco.nndist)
     end
 
     iteration::Int = 1
     while N != 0
         # Findmin and add back renormalisation to distance
-        dij_min, i = fast_findmin(nndij, N)
+        dij_min, i = fast_findmin(ppreco.nndij, N)
         @fastmath dij_min /= R2
-        j::Int = nn[i]
+        j::Int = ppreco.nn[i]
 
         if i != j # Merge jets i and j
             # swap if needed
@@ -364,12 +369,12 @@ function _plain_jet_reconstruct!(particles::AbstractVector{PseudoJet};
                                  newjet_k, dij_min)
 
             # Update the compact arrays, reusing the i-th slot
-            kt2_array[i] = pt2(clusterseq.jets[newjet_k])^p
-            rapidity_array[i] = rapidity(clusterseq.jets[newjet_k])
-            phi_array[i] = phi(clusterseq.jets[newjet_k])
+            ppreco.kt2[i] = pt2(clusterseq.jets[newjet_k])^p
+            ppreco.rapidity[i] = rapidity(clusterseq.jets[newjet_k])
+            ppreco.phi[i] = phi(clusterseq.jets[newjet_k])
             clusterseq_index[i] = newjet_k
-            nndist[i] = R2
-            nn[i] = i
+            ppreco.nndist[i] = R2
+            ppreco.nn[i] = i
         else # i == j, this is a final jet ("merged with beam")
             add_step_to_history!(clusterseq,
                                  clusterseq.jets[clusterseq_index[i]]._cluster_hist_index,
@@ -378,12 +383,12 @@ function _plain_jet_reconstruct!(particles::AbstractVector{PseudoJet};
 
         # Squash step - copy the final jet's compact data into the j-th slot
         if j != N
-            phi_array[j] = phi_array[N]
-            rapidity_array[j] = rapidity_array[N]
-            kt2_array[j] = kt2_array[N]
-            nndist[j] = nndist[N]
-            nn[j] = nn[N]
-            nndij[j] = nndij[N]
+            ppreco.phi[j] = ppreco.phi[N]
+            ppreco.rapidity[j] = ppreco.rapidity[N]
+            ppreco.kt2[j] = ppreco.kt2[N]
+            ppreco.nndist[j] = ppreco.nndist[N]
+            ppreco.nn[j] = ppreco.nn[N]
+            ppreco.nndij[j] = ppreco.nndij[N]
             clusterseq_index[j] = clusterseq_index[N]
         end
 
@@ -393,11 +398,11 @@ function _plain_jet_reconstruct!(particles::AbstractVector{PseudoJet};
 
         # Update nearest neighbours step
         @inbounds @simd for k in 1:N
-            upd_nn_step!(i, j, k, N, Nn, kt2_array, rapidity_array, phi_array, R2, nndist,
-                         nn, nndij)
+            upd_nn_step!(i, j, k, N, Nn, ppreco.kt2, ppreco.rapidity, ppreco.phi, R2, ppreco.nndist,
+                         ppreco.nn, ppreco.nndij)
         end
 
-        nndij[i] = dij(i, kt2_array, nn, nndist)
+        ppreco.nndij[i] = dij(i, ppreco.kt2, ppreco.nn, ppreco.nndist)
     end
 
     # Return the final cluster sequence structure
