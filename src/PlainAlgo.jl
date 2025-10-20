@@ -306,21 +306,21 @@ function _plain_jet_reconstruct!(particles::AbstractVector{PseudoJet};
     # Parameters
     R2 = R^2
 
-    # Use a StructArray for optimised reconstruction on a SoA with the
-    # necessary fields. N slots are required.
-    ppreco = StructArray{PPRecoJet}(undef, N)
-    @inbounds @simd for i in eachindex(particles)
-        ppreco.index[i] = i
-        ppreco.kt2[i] = pt2(particles[i])^p
-        ppreco.phi[i] = phi(particles[i])
-        ppreco.rapidity[i] = rapidity(particles[i])
-        ppreco.nn[i] = i
-        ppreco.nndist[i] = float(R2)
-        ppreco.nndij[i] = 0.0
-    end
-
-    # Maps index from the compact array to the clusterseq jet vector
+    # Optimised compact arrays for determining the next merge step
+    # We make sure these arrays are type stable - have seen issues where, depending on the values
+    # returned by the methods, they can become unstable and performance degrades
     clusterseq_index::Vector{Int} = collect(1:N)
+    kt2_array::Vector{Float64} = pt2.(particles) .^ p
+    phi_array::Vector{Float64} = phi.(particles)
+    rapidity_array::Vector{Float64} = rapidity.(particles)
+    nn::Vector{Int} = Vector(1:N) # nearest neighbours
+    nndist::Vector{Float64} = fill(float(R2), N) # geometric distances to the nearest neighbour
+    nndij::Vector{Float64} = zeros(N) # dij metric distance
+
+    # Now map into a StructArray for optimised reconstruction on a SoA with the
+    # necessary fields. N slots are required.
+    ppreco = StructArray{PPRecoJet}((clusterseq_index, kt2_array, phi_array,
+                                     rapidity_array, nn, nndist, nndij))
 
     # Setup the initial history and get the total energy
     history, Qtot = initial_history(particles)
