@@ -308,8 +308,6 @@ function _plain_jet_reconstruct!(particles::AbstractVector{PseudoJet};
 
     # Use a StructArray for optimised reconstruction on a SoA with the
     # necessary fields. N slots are required.
-    # We make sure these arrays are type stable - have seen issues where, depending on the values
-    # returned by the methods, they can become unstable and performance degrades
     ppreco = StructArray{PPRecoJet}(undef, N)
     @inbounds @simd for i in eachindex(particles)
         ppreco.index[i] = i
