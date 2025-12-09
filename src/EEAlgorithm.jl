@@ -330,7 +330,7 @@ Run an e+e- reconstruction algorithm on a set of initial particles.
   algorithm.
 - `recombine`: The recombination scheme to use.
 - `preprocess`: Preprocessing function for input particles.
-- `γ::Real = 1.0`: The angular exponent parameter for Valencia algorithm. Ignored for other algorithms.
+- `γ::Union{Real, Nothing} = nothing`: The angular exponent parameter for Valencia algorithm. Ignored for other algorithms.
 - `β::Union{Real, Nothing} = nothing`: Optional alias for the Valencia energy exponent; if provided for
     Valencia it overrides `p`.
 
@@ -349,7 +349,7 @@ If the algorithm is Valencia, you can provide `p` (β) and `γ`, or pass `β` ex
 """
 function ee_genkt_algorithm(particles::AbstractVector{T}; algorithm::JetAlgorithm.Algorithm,
                             p::Union{Real, Nothing} = nothing, R = 4.0, recombine = addjets,
-                            preprocess = nothing, γ::Real = 1.0,
+                            preprocess = nothing, γ::Union{Real, Nothing} = nothing,
                             β::Union{Real, Nothing} = nothing) where {T}
 
     # For Valencia, if β is provided, overwrite p
@@ -427,7 +427,7 @@ entry point to this jet reconstruction.
   is raised.
 - `R = 4.0`: The jet radius parameter.
 - `recombine = addjets`: The recombination function used to merge two jets.
- - `γ::Real = 1.0`: Angular exponent for the Valencia beam metric (ignored for other algorithms).
+ - `γ::Union{Real, Nothing} = nothing`: Angular exponent for the Valencia beam metric (ignored for other algorithms).
  - `beta::Union{Real, Nothing} = nothing`: Optional alias for the Valencia energy exponent (β).
      When provided with `algorithm == JetAlgorithm.Valencia`, it overrides `p`.
 
@@ -438,7 +438,7 @@ entry point to this jet reconstruction.
 function _ee_genkt_algorithm(; particles::AbstractVector{EEJet},
                              algorithm::JetAlgorithm.Algorithm, p::Real, R::Real,
                              invR2::Union{Real, Nothing} = nothing, recombine = addjets,
-                             γ::Real = 1.0,
+                             γ::Union{Real, Nothing} = nothing,
                              beta::Union{Real, Nothing} = nothing)
     # Bounds
     N::Int = length(particles)

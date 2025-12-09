@@ -23,8 +23,8 @@ strategy.
 - `strategy::RecoStrategy.Strategy = RecoStrategy.Best`: The jet reconstruction
    strategy to use. `RecoStrategy.Best` makes a dynamic decision based on the
    number of starting particles.
-- `γ::Real = 1.0`: The angular exponent parameter for Valencia algorithm. Ignored
-  by other algorithms.
+- `γ::Union{Real, Nothing} = nothing`: The angular exponent parameter for
+   Valencia algorithm. Ignored by other algorithms.
 
 Note that `p` must be specified for `GenKt` and `EEKt` algorithms,
 other algorithms will ignore its value.
@@ -71,7 +71,7 @@ function jet_reconstruct(particles::AbstractVector; algorithm::JetAlgorithm.Algo
                          p::Union{Real, Nothing} = nothing, R = 1.0,
                          recombine = addjets, preprocess = nothing,
                          strategy::RecoStrategy.Strategy = RecoStrategy.Best,
-                         γ::Real = 1.0)
+                         γ::Union{Real, Nothing} = nothing)
     if is_pp(algorithm)
         # We assume a pp reconstruction
         if strategy == RecoStrategy.Best

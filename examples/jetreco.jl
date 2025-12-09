@@ -26,6 +26,7 @@ function jet_process(events::Vector{Vector{T}};
                      algorithm::JetAlgorithm.Algorithm,
                      distance::Real = 0.4,
                      p::Union{Real, Nothing} = nothing,
+                     γ::Union{Real, Nothing} = nothing,
                      ptmin::Real = 5.0,
                      dcut = nothing,
                      njets = nothing,
@@ -54,7 +55,7 @@ function jet_process(events::Vector{Vector{T}};
     # Now run over each event
     for (ievt, event) in enumerate(events)
         # Run the jet reconstruction
-        cluster_seq = jet_reconstruct(event, R = distance, p = p, algorithm = algorithm,
+        cluster_seq = jet_reconstruct(event, R = distance, p = p, γ = γ, algorithm = algorithm,
                                       strategy = strategy)
         # Now select jets, with inclusive or exclusive parameters
         if !isnothing(njets)
@@ -120,7 +121,11 @@ function parse_command_line(args)
         arg_type = JetAlgorithm.Algorithm
 
         "--power", "-p"
-        help = """Power value for jet reconstruction"""
+        help = """Power value for jet reconstruction (a.k.a. β for Valencia algorithm)"""
+        arg_type = Float64
+
+        "--gamma"
+        help = """Gamma, γ, only for Valencia algorithm)"""
         arg_type = Float64
 
         "--strategy", "-S"
@@ -157,6 +162,7 @@ function main()
     end
     jet_process(events, distance = args[:distance], algorithm = args[:algorithm],
                 p = args[:power],
+                γ = args[:gamma],
                 strategy = args[:strategy],
                 ptmin = args[:ptmin], dcut = args[:exclusive_dcut],
                 njets = args[:exclusive_njets],
